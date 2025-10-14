@@ -1,0 +1,75 @@
+name: Build and Release macOS .app
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+jobs:
+  build-and-release:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+    #   - name: Set up Xcode
+    #     uses: maxim-lobanov/setup-xcode@v1
+    #     with:
+    #       xcode-version: 'latest'
+
+    #   - name: Install dependencies
+    #     run: |
+    #       # Add any dependency installation steps here (CocoaPods, SwiftPM, etc.)
+    #       echo "No extra dependencies to install by default"
+
+      - name: Build .app (Release)
+        run: |
+          xcodebuild -project WebOverlay/WebOverlay.xcodeproj \
+            -scheme WebOverlay \
+            -configuration Release \
+            -derivedDataPath build \
+            -quiet clean build CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO
+
+      - name: Locate built .app
+        id: find_app
+        run: |
+          set -e
+          APP_PATH=$(find build -type d -name "WebOverlay.app" -print -quit || true)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app built; listing build directory:" >&2
+            ls -la build || true
+            exit 1
+          fi
+          echo "app_path=$APP_PATH" >> $GITHUB_OUTPUT
+
+      - name: Create zip archive
+        id: zip
+        run: |
+          ZIP_NAME=WebOverlay-$(date +%Y%m%d%H%M%S).zip
+          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
+          ditto -c -k --sequesterRsrc --keepParent "$${{ steps.find_app.outputs.app_path }}" "$ZIP_NAME"
+          echo "zipfile=$ZIP_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.sha }}
+          release_name: Release ${{ github.sha }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ${{ steps.zip.outputs.zipfile }}
+          asset_name: ${{ steps.zip.outputs.zipfile }}
+          asset_content_type: application/zip
