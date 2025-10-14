@@ -56,13 +56,19 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
           echo "zipfile=$ZIP_NAME" >> $GITHUB_OUTPUT
 
+      - name: Create a version string that is subset of the git SHA
+        id: version
+        run: |
+          VERSION="0.1.0-${GITHUB_SHA::8}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         id: create_release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.sha }}
+          tag_name: ${{ steps.version.outputs.version }}
           release_name: Release ${{ github.sha }}
           draft: false
           prerelease: false
