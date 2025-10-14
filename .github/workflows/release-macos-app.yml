@@ -43,14 +43,17 @@ jobs:
             ls -la build || true
             exit 1
           fi
+          echo "Found app at: $APP_PATH"
           echo "app_path=$APP_PATH" >> $GITHUB_OUTPUT
 
       - name: Create zip archive
         id: zip
+        env:
+          APP_PATH: ${{ steps.find_app.outputs.app_path }}
         run: |
           ZIP_NAME=WebOverlay-$(date +%Y%m%d%H%M%S).zip
-          echo "zip_name=$ZIP_NAME" >> $GITHUB_OUTPUT
-          ditto -c -k --sequesterRsrc --keepParent "$${{ steps.find_app.outputs.app_path }}" "$ZIP_NAME"
+          # Create compressed zip preserving the .app bundle
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
           echo "zipfile=$ZIP_NAME" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
