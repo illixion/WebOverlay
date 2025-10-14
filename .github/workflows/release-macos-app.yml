@@ -27,7 +27,7 @@ jobs:
 
       - name: Build .app (Release)
         run: |
-          xcodebuild -project WebOverlay/WebOverlay.xcodeproj \
+          xcodebuild -project WebOverlay.xcodeproj \
             -scheme WebOverlay \
             -configuration Release \
             -derivedDataPath build \
