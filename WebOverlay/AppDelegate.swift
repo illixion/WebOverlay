@@ -5,16 +5,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: OverlayWindow!
     private var globalHotKeyRef: EventHotKeyRef?
     private var config: OverlayConfig = {
-        // Attempt to load from ~/Library/Application Support/Overlay/config.json
+        // Attempt to load from ~/Library/Application Support/WebOverlay/config.json
         let fm = FileManager.default
-        let dir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("SwiftOverlay", isDirectory: true)
+        let dir = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("WebOverlay", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         let cfgURL = dir.appendingPathComponent("config.json")
         return OverlayConfig.load(from: cfgURL)
     }()
 
     private var configURL: URL {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("SwiftOverlay", isDirectory: true)
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("WebOverlay", isDirectory: true)
         return dir.appendingPathComponent("config.json")
     }
 

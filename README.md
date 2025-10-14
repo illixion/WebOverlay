@@ -13,11 +13,11 @@ This project is a lightweight macOS application written in Swift that creates a 
 - `AppDelegate.swift` – App lifecycle, window setup, hotkey.
 - `OverlayWindow.swift` – Transparent borderless window.
 - `OverlayWebViewController.swift` – Hosts WKWebView, injects basic CSS to remove background.
-- `OverlayConfig.swift` – Codable configuration (saved to `~/Library/Application Support/SwiftOverlay/config.json`).
+- `OverlayConfig.swift` – Codable configuration (saved to `~/Library/Application Support/WebOverlay/config.json`).
 
 ## Configuration
 Create (or let the app create) a JSON file at:
-`~/Library/Application Support/SwiftOverlay/config.json`
+`~/Library/Application Support/WebOverlay/config.json`
 
 Example:
 ```json
