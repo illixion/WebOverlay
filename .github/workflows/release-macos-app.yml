@@ -46,21 +46,21 @@ jobs:
           echo "Found app at: $APP_PATH"
           echo "app_path=$APP_PATH" >> $GITHUB_OUTPUT
 
-      - name: Create zip archive
-        id: zip
-        env:
-          APP_PATH: ${{ steps.find_app.outputs.app_path }}
-        run: |
-          ZIP_NAME=WebOverlay-$(date +%Y%m%d%H%M%S).zip
-          # Create compressed zip preserving the .app bundle
-          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
-          echo "zipfile=$ZIP_NAME" >> $GITHUB_OUTPUT
-
       - name: Create a version string that is subset of the git SHA
         id: version
         run: |
           VERSION="0.1.0-${GITHUB_SHA::8}"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create zip archive
+        id: zip
+        env:
+          APP_PATH: ${{ steps.find_app.outputs.app_path }}
+        run: |
+          ZIP_NAME=WebOverlay-${{ steps.version.outputs.version }}.zip
+          # Create compressed zip preserving the .app bundle
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_NAME"
+          echo "zipfile=$ZIP_NAME" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
         id: create_release
@@ -69,7 +69,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.version.outputs.version }}
-          release_name: Release ${{ github.sha }}
+          release_name: Latest Release
           draft: false
           prerelease: false
 
