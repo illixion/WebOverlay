@@ -53,6 +53,7 @@ I've provided an Xcode project file for convenience, but you can also create you
    </dict>
    ```
 6. To enable overlay on full-screen spaces, use LSUIElement setting, example is in `project.pbxproj`.
+7. If you encounter errors after running the solution, try disabling App Sandbox and Hardened Runtime in Signing & Capabilities.
 
 ## Usage
 - Launch the app; it loads the configured URL.
