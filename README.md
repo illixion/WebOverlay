@@ -58,12 +58,14 @@ I've provided an Xcode project file for convenience, but you can also create you
 ## Usage
 - Launch the app; it loads the configured URL.
 - Use Command+Option+Shift+O to toggle click-through vs interactive mode.
-- Adjust opacity by editing the config and relaunching (or extend code to watch the file if desired).
+- Adjust opacity by editing the config and relaunching.
+- Run `killall WebOverlay` to quit the app from terminal.
 
 ## Extending (Optional)
 - Add a status bar item to expose a small menu (toggle, reload, quit).
-- Add drag-to-move overlay region (currently uses full screen). You could wrap the WKWebView in a custom NSView tracking events and reposition the window.
-- Multi-overlay support: create multiple windows each with their own config.
+- Live config reloading by watching the config file for changes.
+- Add drag-to-move overlay region (currently uses full screen with `.stationary`). You could wrap the WKWebView in a custom NSView tracking events and reposition the window.
+- Multi-overlay support: create multiple windows each with their own config. Currently, overlay spawns on the display where the app is launched.
 
 ## License
 MIT
