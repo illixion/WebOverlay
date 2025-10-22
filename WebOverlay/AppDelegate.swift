@@ -22,10 +22,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("[Overlay] applicationDidFinishLaunching")
         setupWindow()
         setupGlobalHotKey()
+        setupSleepWakeNotifications()
     }
     
     func applicationWillTerminate(_ notification: Notification) {
         unregisterGlobalHotKey()
+        removeSleepWakeNotifications()
+    }
+
+    // MARK: - Sleep / Wake / Screen Lock handling
+    private var workspaceSleepObserver: Any?
+    private var workspaceWakeObserver: Any?
+    private var screenLockedObserver: NSObjectProtocol?
+    private var screenUnlockedObserver: NSObjectProtocol?
+
+    private func setupSleepWakeNotifications() {
+        let nc = NSWorkspace.shared.notificationCenter
+        workspaceSleepObserver = nc.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+            NSLog("[Overlay] willSleepNotification received")
+            self?.pauseOverlayContent()
+        }
+
+        workspaceWakeObserver = nc.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            NSLog("[Overlay] didWakeNotification received")
+            self?.resumeOverlayContent()
+        }
+
+        // Screen lock/unlock notifications are posted on the distributed notification center
+        let dnc = DistributedNotificationCenter.default()
+        screenLockedObserver = dnc.addObserver(forName: NSNotification.Name("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
+            NSLog("[Overlay] screen locked")
+            self?.pauseOverlayContent()
+        }
+        screenUnlockedObserver = dnc.addObserver(forName: NSNotification.Name("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
+            NSLog("[Overlay] screen unlocked")
+            self?.resumeOverlayContent()
+        }
+    }
+
+    private func removeSleepWakeNotifications() {
+        let nc = NSWorkspace.shared.notificationCenter
+        if let obs = workspaceSleepObserver { nc.removeObserver(obs); workspaceSleepObserver = nil }
+        if let obs = workspaceWakeObserver { nc.removeObserver(obs); workspaceWakeObserver = nil }
+
+        let dnc = DistributedNotificationCenter.default()
+        if let obs = screenLockedObserver { dnc.removeObserver(obs); screenLockedObserver = nil }
+        if let obs = screenUnlockedObserver { dnc.removeObserver(obs); screenUnlockedObserver = nil }
+    }
+
+    private func pauseOverlayContent() {
+        if let vc = window.contentViewController as? OverlayWebViewController {
+            vc.pauseWebContent()
+        }
+    }
+
+    private func resumeOverlayContent() {
+        if let vc = window.contentViewController as? OverlayWebViewController {
+            vc.resumeWebContent()
+        }
     }
 
     private func setupWindow() {
