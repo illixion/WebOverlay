@@ -12,7 +12,7 @@ struct OverlayConfig: Codable {
     static let `default` = OverlayConfig(
         url: URL(string: "https://www.apple.com")!,
         color: nil,
-        opacity: 0.85,
+        opacity: 0.3,
         isClickThrough: true,
         autoReloadInterval: nil
     )
@@ -57,7 +57,12 @@ extension NSColor {
 
 extension OverlayConfig {
     static func load(from url: URL) -> OverlayConfig {
-        guard let data = try? Data(contentsOf: url) else { return .default }
+        guard let data = try? Data(contentsOf: url) else {
+            // File doesn't exist, create it with default config
+            let defaultConfig = OverlayConfig.default
+            defaultConfig.save(to: url)
+            return defaultConfig
+        }
         return (try? JSONDecoder().decode(OverlayConfig.self, from: data)) ?? .default
     }
 
