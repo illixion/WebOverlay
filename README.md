@@ -76,6 +76,32 @@ I've provided an Xcode project file for convenience, but you can also create you
 - Adjust opacity by editing the config and relaunching.
 - Run `killall WebOverlay` to quit the app from terminal.
 
+## JavaScript API
+WebOverlay injects a `window.__overlayControl` object into all loaded webpages. This allows your overlay webpage to control the app.
+
+### Available Methods
+
+**`window.__overlayControl.exit()`**
+Terminates the WebOverlay application.
+
+```javascript
+// Example: exit after 10 seconds
+setTimeout(function() {
+    window.__overlayControl.exit();
+}, 10000);
+
+// Example: exit on button click
+document.getElementById('closeBtn').addEventListener('click', function() {
+    window.__overlayControl.exit();
+});
+```
+
+**`window.__overlayControl.pause()`**
+Pauses all timers and media. Used internally during sleep/screen lock.
+
+**`window.__overlayControl.resume()`**
+Stub for resuming (reloading is used instead for reliability).
+
 ## Extending (Optional)
 - Add a status bar item to expose a small menu (toggle, reload, quit).
 - Live config reloading by watching the config file for changes.

@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-final class OverlayWebViewController: NSViewController, WKNavigationDelegate {
+final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WKScriptMessageHandler {
     let config: OverlayConfig
     private var webView: WKWebView?
     private var colorView: NSView?
@@ -73,6 +73,9 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate {
                 },
                 resume: function() {
                     // Not all timers can be restored reliably; a reload is the safest way to resume script-driven activity.
+                },
+                exit: function() {
+                    window.webkit.messageHandlers.overlayBridge.postMessage({ action: 'exit' });
                 }
             };
         })();
@@ -80,6 +83,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate {
 
         let userScript = WKUserScript(source: pauseResumeJS, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         userContentController.addUserScript(userScript)
+        userContentController.add(self, name: "overlayBridge")
 
         let wkConfig = WKWebViewConfiguration()
         wkConfig.userContentController = userContentController
@@ -139,5 +143,14 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate {
         let css = "body { background: rgba(0,0,0,0); color: white; }"
         let js = "var style=document.createElement('style');style.innerHTML=\"\(css.replacingOccurrences(of: "\"", with: "\\\""))\";document.head.appendChild(style);"
         webView?.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    // MARK: - WKScriptMessageHandler
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any],
+              let action = body["action"] as? String else { return }
+        if action == "exit" {
+            NSApplication.shared.terminate(nil)
+        }
     }
 }
