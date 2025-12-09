@@ -5,7 +5,8 @@ This project is a lightweight macOS application written in Swift that creates a 
 ## Features
 - Always-on-top transparent window across all Spaces & full screen (auxiliary) spaces.
 - Configurable URL, opacity, and click-through (mouse pass-through) behavior.
-- Optional periodic auto-reload.
+- Static color overlay mode – display a solid hex color instead of a webpage.
+- Optional periodic auto-reload (URL mode only).
 - Simple hotkey Command+Option+Shift+O toggles click-through.
 - Ephemeral HUD feedback when toggling.
 
@@ -19,7 +20,8 @@ This project is a lightweight macOS application written in Swift that creates a 
 Create (or let the app create) a JSON file at:
 `~/Library/Application Support/WebOverlay/config.json`
 
-Example:
+### URL Mode (default)
+Display a webpage as the overlay:
 ```json
 {
   "url": "https://www.apple.com",
@@ -29,11 +31,24 @@ Example:
 }
 ```
 
+### Color Mode
+Display a static solid color instead of a webpage:
+```json
+{
+  "color": "#FF5500",
+  "opacity": 0.5,
+  "isClickThrough": true
+}
+```
+
 Fields:
-- `url` – Page to display.
+- `url` – Page to display (used when `color` is not set).
+- `color` – Hex color string (e.g., `"#FF0000"`, `"FF0000"`, `"#F00"`, or `"F00"`). When set, displays a solid color overlay instead of a webpage.
 - `opacity` – 0.0–1.0 window alpha.
 - `isClickThrough` – If true, mouse events fall through to apps beneath.
-- `autoReloadInterval` – Seconds between reloads (omit or null for disabled).
+- `autoReloadInterval` – Seconds between reloads (URL mode only; omit or null for disabled).
+
+**Note:** If `color` is specified with a valid hex value, it takes precedence over `url`.
 
 ## Building
 

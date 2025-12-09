@@ -3,7 +3,8 @@ import WebKit
 
 final class OverlayWebViewController: NSViewController, WKNavigationDelegate {
     let config: OverlayConfig
-    private var webView: WKWebView!
+    private var webView: WKWebView?
+    private var colorView: NSView?
     private var reloadTimer: Timer?
 
     init(config: OverlayConfig) {
@@ -19,6 +20,27 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        if config.isColorMode {
+            setupColorView()
+        } else {
+            setupWebView()
+        }
+    }
+
+    private func setupColorView() {
+        guard let color = config.parsedColor else { return }
+
+        let solidColorView = NSView(frame: view.bounds)
+        solidColorView.autoresizingMask = [.width, .height]
+        solidColorView.wantsLayer = true
+        solidColorView.layer?.backgroundColor = color.cgColor
+
+        view.addSubview(solidColorView)
+        colorView = solidColorView
+    }
+
+    private func setupWebView() {
         let userContentController = WKUserContentController()
 
         // Inject a small helper that tracks timers and media so we can pause them when the system sleeps/locks.
@@ -64,44 +86,48 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate {
         wkConfig.suppressesIncrementalRendering = false
         wkConfig.preferences.setValue(true, forKey: "developerExtrasEnabled")
 
-        webView = WKWebView(frame: view.bounds, configuration: wkConfig)
-        webView.autoresizingMask = [.width, .height]
-        webView.navigationDelegate = self
-        webView.setValue(false, forKey: "drawsBackground")
+        let wv = WKWebView(frame: view.bounds, configuration: wkConfig)
+        wv.autoresizingMask = [.width, .height]
+        wv.navigationDelegate = self
+        wv.setValue(false, forKey: "drawsBackground")
 
-        view.addSubview(webView)
+        view.addSubview(wv)
+        webView = wv
         load()
 
         if let interval = config.autoReloadInterval, interval > 1 {
             reloadTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-                self?.webView.reload()
+                self?.webView?.reload()
             }
         }
     }
 
     /// Pause web content: stop reload timer, call injected pause helper and hide the webview to reduce rendering.
     func pauseWebContent() {
+        guard !config.isColorMode else { return }
         reloadTimer?.invalidate()
         reloadTimer = nil
-        webView.evaluateJavaScript("window.__overlayControl && window.__overlayControl.pause();", completionHandler: nil)
-        webView.isHidden = true
+        webView?.evaluateJavaScript("window.__overlayControl && window.__overlayControl.pause();", completionHandler: nil)
+        webView?.isHidden = true
     }
 
     /// Resume web content: show webview and reload to restore script-driven activity.
     func resumeWebContent() {
-        webView.isHidden = false
+        guard !config.isColorMode else { return }
+        webView?.isHidden = false
         if let interval = config.autoReloadInterval, interval > 1 {
             reloadTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-                self?.webView.reload()
+                self?.webView?.reload()
             }
         }
         // Reloading is the most reliable way to return to a running state.
-        webView.reload()
+        webView?.reload()
     }
 
     func load() {
-        let req = URLRequest(url: config.url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
-        webView.load(req)
+        guard let url = config.url else { return }
+        let req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+        webView?.load(req)
     }
 
     // WKNavigationDelegate
@@ -112,6 +138,6 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate {
     private func injectCSS() {
         let css = "body { background: rgba(0,0,0,0); color: white; }"
         let js = "var style=document.createElement('style');style.innerHTML=\"\(css.replacingOccurrences(of: "\"", with: "\\\""))\";document.head.appendChild(style);"
-        webView.evaluateJavaScript(js, completionHandler: nil)
+        webView?.evaluateJavaScript(js, completionHandler: nil)
     }
 }
