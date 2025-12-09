@@ -52,14 +52,45 @@ Display a static solid color instead of a webpage:
 }
 ```
 
+### Fake Lock Screen Mode
+Display a custom lock screen overlay with password protection:
+```json
+{
+  "fakeLockScreen": {
+    "enable": true,
+    "password": "your-password",
+    "message": "If found, please contact: email@example.com",
+    "secure": true
+  }
+}
+```
+
+When enabled, this mode:
+- Ignores `url`, `color`, `isClickThrough`, and `autoReloadInterval` settings
+- Displays a macOS-style lock screen with current time/date
+- Requires the correct password to exit the app (calls `exit()`)
+- Shows an optional message at the bottom (e.g., contact info for lost devices)
+- In secure mode (`secure: true`):
+  - Disables the toggle and quit hotkeys
+  - Attempts to capture keyboard events to block Cmd+Q, Cmd+W, Cmd+Tab, and Escape
+  - Keeps the window focused when other key events are detected
+  - Note: Full security requires accessibility permissions; this provides best-effort protection
+
+This mode is useful for simulating a lock screen on kiosk or demo machines.
+
 Fields:
 - `url` – Page to display (used when `color` is not set).
 - `color` – Hex color string (e.g., `"#FF0000"`, `"FF0000"`, `"#F00"`, or `"F00"`). When set, displays a solid color overlay instead of a webpage.
 - `opacity` – 0.0–1.0 window alpha.
 - `isClickThrough` – If true, mouse events fall through to apps beneath.
 - `autoReloadInterval` – Seconds between reloads (URL mode only; omit or null for disabled).
+- `fakeLockScreen` – Object with lock screen settings:
+  - `enable` – Boolean to enable lock screen mode.
+  - `password` – Password required to unlock (exit the app).
+  - `message` – Optional message displayed at bottom (e.g., contact info).
+  - `secure` – Boolean to enable additional security measures.
 
-**Note:** If `color` is specified with a valid hex value, it takes precedence over `url`.
+**Note:** Mode priority: `fakeLockScreen` > `color` > `url`.
 
 ## Building
 

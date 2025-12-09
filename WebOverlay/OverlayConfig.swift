@@ -1,6 +1,21 @@
 import Foundation
 import AppKit
 
+/// Configuration for fake lock screen feature
+struct FakeLockScreenConfig: Codable {
+    var enable: Bool
+    var password: String
+    var message: String?
+    var secure: Bool
+
+    static let `default` = FakeLockScreenConfig(
+        enable: false,
+        password: "",
+        message: nil,
+        secure: false
+    )
+}
+
 /// Basic configuration for the overlay HUD
 struct OverlayConfig: Codable {
     var url: URL?
@@ -8,14 +23,39 @@ struct OverlayConfig: Codable {
     var opacity: CGFloat
     var isClickThrough: Bool
     var autoReloadInterval: TimeInterval?
+    var fakeLockScreen: FakeLockScreenConfig?
 
     static let `default` = OverlayConfig(
         url: URL(string: "https://www.apple.com")!,
         color: nil,
         opacity: 0.3,
         isClickThrough: true,
-        autoReloadInterval: nil
+        autoReloadInterval: nil,
+        fakeLockScreen: nil
     )
+
+    enum CodingKeys: String, CodingKey {
+        case url, color, opacity, isClickThrough, autoReloadInterval, fakeLockScreen
+    }
+
+    init(url: URL? = nil, color: String? = nil, opacity: CGFloat = 0.3, isClickThrough: Bool = true, autoReloadInterval: TimeInterval? = nil, fakeLockScreen: FakeLockScreenConfig? = nil) {
+        self.url = url
+        self.color = color
+        self.opacity = opacity
+        self.isClickThrough = isClickThrough
+        self.autoReloadInterval = autoReloadInterval
+        self.fakeLockScreen = fakeLockScreen
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        url = try container.decodeIfPresent(URL.self, forKey: .url)
+        color = try container.decodeIfPresent(String.self, forKey: .color)
+        opacity = try container.decodeIfPresent(CGFloat.self, forKey: .opacity) ?? 0.3
+        isClickThrough = try container.decodeIfPresent(Bool.self, forKey: .isClickThrough) ?? true
+        autoReloadInterval = try container.decodeIfPresent(TimeInterval.self, forKey: .autoReloadInterval)
+        fakeLockScreen = try container.decodeIfPresent(FakeLockScreenConfig.self, forKey: .fakeLockScreen)
+    }
 
     /// Returns the parsed NSColor from the hex color string, if valid
     var parsedColor: NSColor? {
@@ -26,6 +66,16 @@ struct OverlayConfig: Codable {
     /// Whether this config uses color mode instead of URL mode
     var isColorMode: Bool {
         return color != nil && parsedColor != nil
+    }
+
+    /// Whether the fake lock screen mode is enabled
+    var isLockScreenMode: Bool {
+        return fakeLockScreen?.enable == true
+    }
+
+    /// Whether secure mode is enabled (captures input, disables hotkeys)
+    var isSecureMode: Bool {
+        return isLockScreenMode && fakeLockScreen?.secure == true
     }
 }
 

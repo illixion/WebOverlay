@@ -21,7 +21,9 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        if config.isColorMode {
+        if config.isLockScreenMode {
+            setupLockScreenView()
+        } else if config.isColorMode {
             setupColorView()
         } else {
             setupWebView()
@@ -38,6 +40,235 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
 
         view.addSubview(solidColorView)
         colorView = solidColorView
+    }
+
+    private func setupLockScreenView() {
+        let lockScreenConfig = config.fakeLockScreen ?? .default
+        let password = lockScreenConfig.password
+        let message = lockScreenConfig.message ?? ""
+        let escapedMessage = message
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
+        let escapedPassword = password
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+
+        let lockScreenHTML = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                    user-select: none;
+                    -webkit-user-select: none;
+                }
+                html, body {
+                    width: 100%;
+                    height: 100%;
+                    overflow: hidden;
+                    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+                    background: linear-gradient(180deg, #1a1a2e 0%, #0f0f1a 100%);
+                    color: white;
+                }
+                .container {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    justify-content: center;
+                    height: 100%;
+                    padding: 20px;
+                }
+                .time {
+                    font-size: 96px;
+                    font-weight: 200;
+                    letter-spacing: -2px;
+                    margin-bottom: 8px;
+                }
+                .date {
+                    font-size: 24px;
+                    font-weight: 400;
+                    opacity: 0.9;
+                    margin-bottom: 60px;
+                }
+                .avatar {
+                    width: 120px;
+                    height: 120px;
+                    border-radius: 50%;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin-bottom: 16px;
+                    font-size: 48px;
+                }
+                .username {
+                    font-size: 22px;
+                    font-weight: 500;
+                    margin-bottom: 20px;
+                }
+                .password-container {
+                    position: relative;
+                    width: 220px;
+                }
+                .password-input {
+                    width: 100%;
+                    height: 36px;
+                    padding: 0 40px 0 16px;
+                    border: none;
+                    border-radius: 18px;
+                    background: rgba(255, 255, 255, 0.15);
+                    backdrop-filter: blur(10px);
+                    -webkit-backdrop-filter: blur(10px);
+                    color: white;
+                    font-size: 16px;
+                    outline: none;
+                    caret-color: white;
+                }
+                .password-input::placeholder {
+                    color: rgba(255, 255, 255, 0.5);
+                }
+                .password-input:focus {
+                    background: rgba(255, 255, 255, 0.2);
+                }
+                .submit-btn {
+                    position: absolute;
+                    right: 4px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    width: 28px;
+                    height: 28px;
+                    border: none;
+                    border-radius: 50%;
+                    background: rgba(255, 255, 255, 0.2);
+                    color: white;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-size: 14px;
+                    opacity: 0.7;
+                    transition: opacity 0.2s;
+                }
+                .submit-btn:hover {
+                    opacity: 1;
+                }
+                .message {
+                    position: fixed;
+                    bottom: 40px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    font-size: 14px;
+                    opacity: 0.7;
+                    text-align: center;
+                    max-width: 80%;
+                    white-space: pre-wrap;
+                }
+                .shake {
+                    animation: shake 0.5s ease-in-out;
+                }
+                @keyframes shake {
+                    0%, 100% { transform: translateX(0); }
+                    20%, 60% { transform: translateX(-10px); }
+                    40%, 80% { transform: translateX(10px); }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="time" id="time">00:00</div>
+                <div class="date" id="date">Loading...</div>
+                <div class="avatar">🔒</div>
+                <div class="username">Locked</div>
+                <div class="password-container" id="password-container">
+                    <input type="password" class="password-input" id="password" placeholder="Enter Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                    <button class="submit-btn" id="submit">→</button>
+                </div>
+            </div>
+            <div class="message" id="message"></div>
+            <script>
+                const PASSWORD = "\(escapedPassword)";
+                const MESSAGE = "\(escapedMessage)";
+
+                document.getElementById('message').textContent = MESSAGE;
+
+                function updateTime() {
+                    const now = new Date();
+                    const hours = now.getHours();
+                    const minutes = now.getMinutes().toString().padStart(2, '0');
+                    document.getElementById('time').textContent = hours + ':' + minutes;
+
+                    const options = { weekday: 'long', month: 'long', day: 'numeric' };
+                    document.getElementById('date').textContent = now.toLocaleDateString('en-US', options);
+                }
+                updateTime();
+                setInterval(updateTime, 1000);
+
+                const passwordInput = document.getElementById('password');
+                const passwordContainer = document.getElementById('password-container');
+
+                function checkPassword() {
+                    if (passwordInput.value === PASSWORD) {
+                        window.__overlayControl.exit();
+                    } else {
+                        passwordInput.value = '';
+                        passwordContainer.classList.add('shake');
+                        setTimeout(() => passwordContainer.classList.remove('shake'), 500);
+                    }
+                }
+
+                passwordInput.addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        checkPassword();
+                    }
+                });
+
+                document.getElementById('submit').addEventListener('click', checkPassword);
+
+                // Focus password field on load
+                setTimeout(() => passwordInput.focus(), 100);
+
+                // Re-focus if clicked elsewhere
+                document.addEventListener('click', function(e) {
+                    if (e.target !== passwordInput) {
+                        passwordInput.focus();
+                    }
+                });
+            </script>
+        </body>
+        </html>
+        """
+
+        let userContentController = WKUserContentController()
+
+        let exitJS = """
+        window.__overlayControl = {
+            exit: function() {
+                window.webkit.messageHandlers.overlayBridge.postMessage({ action: 'exit' });
+            }
+        };
+        """
+        let userScript = WKUserScript(source: exitJS, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        userContentController.addUserScript(userScript)
+        userContentController.add(self, name: "overlayBridge")
+
+        let wkConfig = WKWebViewConfiguration()
+        wkConfig.userContentController = userContentController
+        wkConfig.suppressesIncrementalRendering = false
+
+        let wv = WKWebView(frame: view.bounds, configuration: wkConfig)
+        wv.autoresizingMask = [.width, .height]
+        wv.navigationDelegate = self
+        wv.setValue(false, forKey: "drawsBackground")
+
+        view.addSubview(wv)
+        webView = wv
+
+        wv.loadHTMLString(lockScreenHTML, baseURL: nil)
     }
 
     private func setupWebView() {

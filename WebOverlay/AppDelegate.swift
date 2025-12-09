@@ -5,6 +5,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: OverlayWindow!
     private var globalHotKeyRef: EventHotKeyRef?
     private var quitHotKeyRef: EventHotKeyRef?
+    private var localEventMonitor: Any?
+    private var globalEventMonitor: Any?
     private var config: OverlayConfig = {
         // Attempt to load from ~/Library/Application Support/WebOverlay/config.json
         let fm = FileManager.default
@@ -22,13 +24,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[Overlay] applicationDidFinishLaunching")
         setupWindow()
-        setupGlobalHotKey()
+
+        // In secure lock screen mode, don't register hotkeys that could bypass the lock
+        if !config.isSecureMode {
+            setupGlobalHotKey()
+        } else {
+            NSLog("[Overlay] Secure mode enabled - hotkeys disabled")
+            setupSecureModeEventMonitoring()
+        }
+
         setupSleepWakeNotifications()
     }
     
     func applicationWillTerminate(_ notification: Notification) {
         unregisterGlobalHotKey()
         removeSleepWakeNotifications()
+        removeSecureModeEventMonitoring()
     }
 
     // MARK: - Sleep / Wake / Screen Lock handling
@@ -84,17 +95,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupWindow() {
-    let screenFrame = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
-    NSLog("[Overlay] Creating overlay window at frame: \(NSStringFromRect(screenFrame))")
+        let screenFrame = NSScreen.main?.frame ?? NSRect(x: 0, y: 0, width: 800, height: 600)
+        NSLog("[Overlay] Creating overlay window at frame: \(NSStringFromRect(screenFrame))")
         window = OverlayWindow(contentRect: screenFrame)
 
         let vc = OverlayWebViewController(config: config)
         window.contentViewController = vc
-        window.alphaValue = config.opacity
-        window.ignoresMouseEvents = config.isClickThrough
 
-    window.makeKeyAndOrderFront(nil)
-    NSLog("[Overlay] Window visible (alpha=\(window.alphaValue), clickThrough=\(window.ignoresMouseEvents))")
+        // In lock screen mode, force full opacity and interactivity
+        if config.isLockScreenMode {
+            window.alphaValue = 1.0
+            window.ignoresMouseEvents = false
+            window.updateInteractiveMode(true)
+            NSLog("[Overlay] Lock screen mode - forcing full opacity and interactivity")
+        } else {
+            window.alphaValue = config.opacity
+            window.ignoresMouseEvents = config.isClickThrough
+        }
+
+        window.makeKeyAndOrderFront(nil)
+        NSLog("[Overlay] Window visible (alpha=\(window.alphaValue), clickThrough=\(window.ignoresMouseEvents))")
     }
     
     private func setupGlobalHotKey() {
@@ -246,5 +266,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         hudCloseWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
+    }
+
+    // MARK: - Secure Mode Event Monitoring
+
+    private func setupSecureModeEventMonitoring() {
+        // Monitor local events (within the app) to prevent certain key combinations
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            return self?.handleSecureModeKeyEvent(event)
+        }
+
+        // Monitor global events (system-wide) to try to capture events before other apps
+        // Note: This requires accessibility permissions to fully work
+        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
+            // Global monitor can only observe, not block, but we keep the window focused
+            self?.window.makeKeyAndOrderFront(nil)
+        }
+
+        NSLog("[Overlay] Secure mode event monitoring enabled")
+    }
+
+    private func handleSecureModeKeyEvent(_ event: NSEvent) -> NSEvent? {
+        // Block Command+Q to prevent quitting via keyboard
+        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "q" {
+            NSLog("[Overlay] Blocked Cmd+Q in secure mode")
+            return nil
+        }
+
+        // Block Command+W to prevent window close
+        if event.modifierFlags.contains(.command) && event.charactersIgnoringModifiers == "w" {
+            NSLog("[Overlay] Blocked Cmd+W in secure mode")
+            return nil
+        }
+
+        // Block Command+Tab to prevent app switching (best effort)
+        if event.modifierFlags.contains(.command) && event.keyCode == 48 {
+            NSLog("[Overlay] Blocked Cmd+Tab in secure mode")
+            return nil
+        }
+
+        // Block Escape key
+        if event.keyCode == 53 {
+            NSLog("[Overlay] Blocked Escape in secure mode")
+            return nil
+        }
+
+        // Allow the event for password entry
+        return event
+    }
+
+    private func removeSecureModeEventMonitoring() {
+        if let monitor = localEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            localEventMonitor = nil
+        }
+        if let monitor = globalEventMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalEventMonitor = nil
+        }
+        NSLog("[Overlay] Secure mode event monitoring removed")
     }
 }
