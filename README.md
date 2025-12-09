@@ -10,6 +10,16 @@ This project is a lightweight macOS application written in Swift that creates a 
 - Simple hotkey Command+Option+Shift+O toggles click-through.
 - Ephemeral HUD feedback when toggling.
 
+# Getting Started
+
+- Download the latest release from the [Releases](https://github.com/illixion/WebOverlay/releases) page, or build from source (see below).
+- Install the app by moving it to your Applications folder. **Note:** macOS Quarantine may block the app on first launch; run the following command in terminal if needed:
+  ```bash
+  xattr -d com.apple.quarantine /Applications/WebOverlay.app
+  ```
+- Launch the app; it will create a default config file if none exists.
+- Edit the config file to customize the overlay (see Configuration section).
+
 ## File Overview
 - `AppDelegate.swift` – App lifecycle, window setup, hotkey.
 - `OverlayWindow.swift` – Transparent borderless window.
