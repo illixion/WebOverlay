@@ -8,6 +8,7 @@ This project is a lightweight macOS application written in Swift that creates a 
 - Static color overlay mode – display a solid hex color instead of a webpage.
 - Optional periodic auto-reload (URL mode only).
 - Simple hotkey Command+Option+Shift+O toggles click-through.
+- Use the hotkey Command+Option+Shift+K to quit the app.
 - Ephemeral HUD feedback when toggling.
 
 # Getting Started

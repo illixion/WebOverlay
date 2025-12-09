@@ -4,6 +4,7 @@ import Carbon
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var window: OverlayWindow!
     private var globalHotKeyRef: EventHotKeyRef?
+    private var quitHotKeyRef: EventHotKeyRef?
     private var config: OverlayConfig = {
         // Attempt to load from ~/Library/Application Support/WebOverlay/config.json
         let fm = FileManager.default
@@ -97,14 +98,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
     
     private func setupGlobalHotKey() {
-        // Register global hotkey: Command+Option+Shift+O
+        // Register global hotkey: Command+Option+Shift+O (toggle click-through)
         let hotKeyID = EventHotKeyID(signature: OSType(0x4F564C59), id: 1) // 'OVLY'
         var eventHotKey: EventHotKeyRef?
-        
+
         // KeyCode for 'O' is 31
         let keyCode: UInt32 = 31
         let modifiers: UInt32 = UInt32(cmdKey | optionKey | shiftKey)
-        
+
         let status = RegisterEventHotKey(
             keyCode,
             modifiers,
@@ -113,39 +114,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             0,
             &eventHotKey
         )
-        
+
         if status == noErr {
             globalHotKeyRef = eventHotKey
             NSLog("[Overlay] Global hotkey registered: Cmd+Opt+Shift+O")
-            
-            // Install Carbon event handler
-            var eventSpec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-            InstallEventHandler(GetEventDispatcherTarget(), { (_, event, userData) -> OSStatus in
-                guard let userData = userData else { return OSStatus(eventNotHandledErr) }
-                let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
-                
-                var hotKeyID = EventHotKeyID()
-                let status = GetEventParameter(
-                    event,
-                    UInt32(kEventParamDirectObject),
-                    UInt32(typeEventHotKeyID),
-                    nil,
-                    MemoryLayout<EventHotKeyID>.size,
-                    nil,
-                    &hotKeyID
-                )
-                
-                if status == noErr && hotKeyID.id == 1 {
-                    DispatchQueue.main.async {
-                        delegate.toggleClickThrough()
-                    }
-                    return noErr
-                }
-                return OSStatus(eventNotHandledErr)
-            }, 1, &eventSpec, Unmanaged.passUnretained(self).toOpaque(), nil)
         } else {
             NSLog("[Overlay] Failed to register global hotkey: \(status)")
         }
+
+        // Register global hotkey: Command+Option+Shift+K (quit app)
+        let quitHotKeyID = EventHotKeyID(signature: OSType(0x4F564C59), id: 2) // 'OVLY' with id 2
+        var quitEventHotKey: EventHotKeyRef?
+
+        // KeyCode for 'K' is 40
+        let quitKeyCode: UInt32 = 40
+
+        let quitStatus = RegisterEventHotKey(
+            quitKeyCode,
+            modifiers,
+            quitHotKeyID,
+            GetEventDispatcherTarget(),
+            0,
+            &quitEventHotKey
+        )
+
+        if quitStatus == noErr {
+            quitHotKeyRef = quitEventHotKey
+            NSLog("[Overlay] Global hotkey registered: Cmd+Opt+Shift+K (quit)")
+        } else {
+            NSLog("[Overlay] Failed to register quit hotkey: \(quitStatus)")
+        }
+
+        // Install Carbon event handler for all hotkeys
+        var eventSpec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(GetEventDispatcherTarget(), { (_, event, userData) -> OSStatus in
+            guard let userData = userData else { return OSStatus(eventNotHandledErr) }
+            let delegate = Unmanaged<AppDelegate>.fromOpaque(userData).takeUnretainedValue()
+
+            var hotKeyID = EventHotKeyID()
+            let status = GetEventParameter(
+                event,
+                UInt32(kEventParamDirectObject),
+                UInt32(typeEventHotKeyID),
+                nil,
+                MemoryLayout<EventHotKeyID>.size,
+                nil,
+                &hotKeyID
+            )
+
+            if status == noErr {
+                DispatchQueue.main.async {
+                    switch hotKeyID.id {
+                    case 1:
+                        delegate.toggleClickThrough()
+                    case 2:
+                        NSLog("[Overlay] Quit hotkey pressed, terminating app")
+                        NSApplication.shared.terminate(nil)
+                    default:
+                        break
+                    }
+                }
+                return noErr
+            }
+            return OSStatus(eventNotHandledErr)
+        }, 1, &eventSpec, Unmanaged.passUnretained(self).toOpaque(), nil)
     }
     
     private func unregisterGlobalHotKey() {
@@ -153,6 +185,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             UnregisterEventHotKey(hotKeyRef)
             globalHotKeyRef = nil
             NSLog("[Overlay] Global hotkey unregistered")
+        }
+        if let hotKeyRef = quitHotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+            quitHotKeyRef = nil
+            NSLog("[Overlay] Quit hotkey unregistered")
         }
     }
 
