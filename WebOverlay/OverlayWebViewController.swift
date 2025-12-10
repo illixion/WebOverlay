@@ -44,16 +44,13 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
 
     private func setupLockScreenView() {
         let lockScreenConfig = config.fakeLockScreen ?? .default
-        let password = lockScreenConfig.password
         let message = lockScreenConfig.message ?? ""
         let escapedMessage = message
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
             .replacingOccurrences(of: "\n", with: "\\n")
-        let escapedPassword = password
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
 
+        // Password is NOT embedded in HTML - validation happens in Swift
         let lockScreenHTML = """
         <!DOCTYPE html>
         <html>
@@ -135,6 +132,9 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                 .password-input:focus {
                     background: rgba(255, 255, 255, 0.2);
                 }
+                .password-input:disabled {
+                    opacity: 0.5;
+                }
                 .submit-btn {
                     position: absolute;
                     right: 4px;
@@ -156,6 +156,10 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                 }
                 .submit-btn:hover {
                     opacity: 1;
+                }
+                .submit-btn:disabled {
+                    opacity: 0.3;
+                    cursor: not-allowed;
                 }
                 .message {
                     position: fixed;
@@ -191,7 +195,6 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
             </div>
             <div class="message" id="message"></div>
             <script>
-                const PASSWORD = "\(escapedPassword)";
                 const MESSAGE = "\(escapedMessage)";
 
                 document.getElementById('message').textContent = MESSAGE;
@@ -210,16 +213,31 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
 
                 const passwordInput = document.getElementById('password');
                 const passwordContainer = document.getElementById('password-container');
+                const submitBtn = document.getElementById('submit');
 
                 function checkPassword() {
-                    if (passwordInput.value === PASSWORD) {
-                        window.__overlayControl.exit();
-                    } else {
-                        passwordInput.value = '';
-                        passwordContainer.classList.add('shake');
-                        setTimeout(() => passwordContainer.classList.remove('shake'), 500);
-                    }
+                    const pwd = passwordInput.value;
+                    if (!pwd) return;
+
+                    // Disable input while verifying
+                    passwordInput.disabled = true;
+                    submitBtn.disabled = true;
+
+                    // Send password to Swift for verification (password never stored in JS)
+                    window.__overlayControl.verifyPassword(pwd);
                 }
+
+                // Called from Swift when password is incorrect
+                window.onPasswordIncorrect = function() {
+                    passwordInput.value = '';
+                    passwordInput.disabled = false;
+                    submitBtn.disabled = false;
+                    passwordContainer.classList.add('shake');
+                    setTimeout(() => {
+                        passwordContainer.classList.remove('shake');
+                        passwordInput.focus();
+                    }, 500);
+                };
 
                 passwordInput.addEventListener('keydown', function(e) {
                     if (e.key === 'Enter') {
@@ -227,14 +245,14 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                     }
                 });
 
-                document.getElementById('submit').addEventListener('click', checkPassword);
+                submitBtn.addEventListener('click', checkPassword);
 
                 // Focus password field on load
                 setTimeout(() => passwordInput.focus(), 100);
 
                 // Re-focus if clicked elsewhere
                 document.addEventListener('click', function(e) {
-                    if (e.target !== passwordInput) {
+                    if (e.target !== passwordInput && !passwordInput.disabled) {
                         passwordInput.focus();
                     }
                 });
@@ -245,14 +263,18 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
 
         let userContentController = WKUserContentController()
 
-        let exitJS = """
+        // Bridge to Swift - password verification happens server-side (in Swift)
+        let bridgeJS = """
         window.__overlayControl = {
+            verifyPassword: function(password) {
+                window.webkit.messageHandlers.overlayBridge.postMessage({ action: 'verifyPassword', password: password });
+            },
             exit: function() {
                 window.webkit.messageHandlers.overlayBridge.postMessage({ action: 'exit' });
             }
         };
         """
-        let userScript = WKUserScript(source: exitJS, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        let userScript = WKUserScript(source: bridgeJS, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         userContentController.addUserScript(userScript)
         userContentController.add(self, name: "overlayBridge")
 
@@ -380,8 +402,36 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any],
               let action = body["action"] as? String else { return }
-        if action == "exit" {
+
+        switch action {
+        case "exit":
             NSApplication.shared.terminate(nil)
+
+        case "verifyPassword":
+            guard let password = body["password"] as? String else { return }
+            handlePasswordVerification(password)
+
+        default:
+            break
+        }
+    }
+
+    private func handlePasswordVerification(_ inputPassword: String) {
+        if config.verifyPassword(inputPassword) {
+            NSLog("[Overlay] Password verified successfully")
+
+            // Unlock secure mode before terminating
+            if config.isSecureMode {
+                if let appDelegate = NSApp.delegate as? AppDelegate {
+                    appDelegate.unlockSecureMode()
+                }
+            }
+
+            NSApplication.shared.terminate(nil)
+        } else {
+            NSLog("[Overlay] Password verification failed")
+            // Notify JavaScript that password was incorrect
+            webView?.evaluateJavaScript("window.onPasswordIncorrect && window.onPasswordIncorrect();", completionHandler: nil)
         }
     }
 }

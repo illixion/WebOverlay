@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CryptoKit
 
 /// Configuration for fake lock screen feature
 struct FakeLockScreenConfig: Codable {
@@ -14,6 +15,43 @@ struct FakeLockScreenConfig: Codable {
         message: nil,
         secure: false
     )
+
+    /// Check if the password is already hashed (prefixed with "sha256:")
+    var isPasswordHashed: Bool {
+        return password.hasPrefix("sha256:") && password.count == 71 // "sha256:" (7) + 64 hex chars
+    }
+
+    /// Get the password hash for comparison
+    var passwordHash: String {
+        if isPasswordHashed {
+            return String(password.dropFirst(7)) // Remove "sha256:" prefix
+        }
+        // If not hashed, hash it now for comparison
+        return Self.hashPassword(password)
+    }
+
+    /// Hash a plaintext password using SHA-256
+    static func hashPassword(_ plaintext: String) -> String {
+        let data = Data(plaintext.utf8)
+        let hash = SHA256.hash(data: data)
+        return hash.compactMap { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Verify if input matches the stored password
+    func verifyPassword(_ input: String) -> Bool {
+        let inputHash = Self.hashPassword(input)
+        return inputHash == passwordHash
+    }
+
+    /// Return a copy with the password hashed (if not already)
+    func withHashedPassword() -> FakeLockScreenConfig {
+        if isPasswordHashed || password.isEmpty {
+            return self
+        }
+        var copy = self
+        copy.password = "sha256:" + Self.hashPassword(password)
+        return copy
+    }
 }
 
 /// Basic configuration for the overlay HUD
@@ -77,6 +115,23 @@ struct OverlayConfig: Codable {
     var isSecureMode: Bool {
         return isLockScreenMode && fakeLockScreen?.secure == true
     }
+
+    /// Hash the password if it's plaintext and update the config
+    mutating func hashPasswordIfNeeded() {
+        guard let lockScreen = fakeLockScreen,
+              !lockScreen.password.isEmpty,
+              !lockScreen.isPasswordHashed else {
+            return
+        }
+
+        NSLog("[Overlay] Hashing plaintext password and saving to config")
+        fakeLockScreen = lockScreen.withHashedPassword()
+    }
+
+    /// Verify if input matches the stored password
+    func verifyPassword(_ input: String) -> Bool {
+        return fakeLockScreen?.verifyPassword(input) ?? false
+    }
 }
 
 extension NSColor {
@@ -118,7 +173,9 @@ extension OverlayConfig {
 
     func save(to url: URL) {
         do {
-            let data = try JSONEncoder().encode(self)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(self)
             try data.write(to: url)
         } catch {
             NSLog("OverlayConfig save error: \(error)")
