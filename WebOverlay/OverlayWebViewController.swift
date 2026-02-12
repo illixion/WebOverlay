@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WKScriptMessageHandler {
+final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
     let config: OverlayConfig
     private var webView: WKWebView?
     private var colorView: NSView?
@@ -43,6 +43,50 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
     }
 
     private func setupLockScreenView() {
+        let userContentController = WKUserContentController()
+
+        // Bridge to Swift - password verification happens in Swift, not JavaScript
+        // This API is available to both built-in and custom lock screens
+        let bridgeJS = """
+        window.__overlayControl = {
+            verifyPassword: function(password) {
+                window.webkit.messageHandlers.overlayBridge.postMessage({ action: 'verifyPassword', password: password });
+            },
+            exit: function() {
+                window.webkit.messageHandlers.overlayBridge.postMessage({ action: 'exit' });
+            }
+        };
+        """
+        let userScript = WKUserScript(source: bridgeJS, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        userContentController.addUserScript(userScript)
+        userContentController.add(self, name: "overlayBridge")
+
+        let wkConfig = WKWebViewConfiguration()
+        wkConfig.userContentController = userContentController
+        wkConfig.suppressesIncrementalRendering = false
+
+        let wv = WKWebView(frame: view.bounds, configuration: wkConfig)
+        wv.autoresizingMask = [.width, .height]
+        wv.navigationDelegate = self
+        wv.uiDelegate = self
+        wv.setValue(false, forKey: "drawsBackground")
+
+        view.addSubview(wv)
+        webView = wv
+
+        // If a URL is specified, load it instead of the built-in lock screen
+        if let url = config.url {
+            NSLog("[Overlay] Lock screen mode with custom URL: \(url)")
+            let req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
+            wv.load(req)
+        } else {
+            // Use built-in lock screen HTML
+            let lockScreenHTML = buildBuiltInLockScreenHTML()
+            wv.loadHTMLString(lockScreenHTML, baseURL: nil)
+        }
+    }
+
+    private func buildBuiltInLockScreenHTML() -> String {
         let lockScreenConfig = config.fakeLockScreen ?? .default
         let message = lockScreenConfig.message ?? ""
         let escapedMessage = message
@@ -51,7 +95,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
             .replacingOccurrences(of: "\n", with: "\\n")
 
         // Password is NOT embedded in HTML - validation happens in Swift
-        let lockScreenHTML = """
+        return """
         <!DOCTYPE html>
         <html>
         <head>
@@ -260,37 +304,6 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
         </body>
         </html>
         """
-
-        let userContentController = WKUserContentController()
-
-        // Bridge to Swift - password verification happens server-side (in Swift)
-        let bridgeJS = """
-        window.__overlayControl = {
-            verifyPassword: function(password) {
-                window.webkit.messageHandlers.overlayBridge.postMessage({ action: 'verifyPassword', password: password });
-            },
-            exit: function() {
-                window.webkit.messageHandlers.overlayBridge.postMessage({ action: 'exit' });
-            }
-        };
-        """
-        let userScript = WKUserScript(source: bridgeJS, injectionTime: .atDocumentStart, forMainFrameOnly: false)
-        userContentController.addUserScript(userScript)
-        userContentController.add(self, name: "overlayBridge")
-
-        let wkConfig = WKWebViewConfiguration()
-        wkConfig.userContentController = userContentController
-        wkConfig.suppressesIncrementalRendering = false
-
-        let wv = WKWebView(frame: view.bounds, configuration: wkConfig)
-        wv.autoresizingMask = [.width, .height]
-        wv.navigationDelegate = self
-        wv.setValue(false, forKey: "drawsBackground")
-
-        view.addSubview(wv)
-        webView = wv
-
-        wv.loadHTMLString(lockScreenHTML, baseURL: nil)
     }
 
     private func setupWebView() {
@@ -346,6 +359,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
         let wv = WKWebView(frame: view.bounds, configuration: wkConfig)
         wv.autoresizingMask = [.width, .height]
         wv.navigationDelegate = self
+        wv.uiDelegate = self
         wv.setValue(false, forKey: "drawsBackground")
 
         view.addSubview(wv)
@@ -389,13 +403,21 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
 
     // WKNavigationDelegate
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-       injectCSS()
+        // Only inject CSS for non-lock-screen mode
+        if !config.isLockScreenMode {
+            injectCSS()
+        }
     }
 
     private func injectCSS() {
         let css = "body { background: rgba(0,0,0,0); color: white; }"
         let js = "var style=document.createElement('style');style.innerHTML=\"\(css.replacingOccurrences(of: "\"", with: "\\\""))\";document.head.appendChild(style);"
         webView?.evaluateJavaScript(js, completionHandler: nil)
+    }
+
+    // MARK: - WKUIDelegate
+    func webView(_ webView: WKWebView, requestMediaCapturePermissionFor origin: WKSecurityOrigin, initiatedByFrame frame: WKFrameInfo, type: WKMediaCaptureType, decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        decisionHandler(.grant)
     }
 
     // MARK: - WKScriptMessageHandler

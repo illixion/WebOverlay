@@ -53,7 +53,7 @@ Display a static solid color instead of a webpage:
 ```
 
 ### Fake Lock Screen Mode
-Display a custom lock screen overlay with password protection:
+Display a lock screen overlay with password protection:
 ```json
 {
   "fakeLockScreen": {
@@ -66,17 +66,45 @@ Display a custom lock screen overlay with password protection:
 ```
 
 When enabled, this mode:
-- Ignores `url`, `color`, `isClickThrough`, and `autoReloadInterval` settings
-- Displays a macOS-style lock screen with current time/date
-- Requires the correct password to exit the app (calls `exit()`)
+- Displays a macOS-style lock screen with current time/date (built-in)
+- Requires the correct password to exit the app
 - Shows an optional message at the bottom (e.g., contact info for lost devices)
+- **Password security**: Plaintext passwords in config are automatically hashed (SHA-256) on first launch
 - In secure mode (`secure: true`):
   - Disables the toggle and quit hotkeys
-  - Attempts to capture keyboard events to block Cmd+Q, Cmd+W, Cmd+Tab, and Escape
-  - Keeps the window focused when other key events are detected
-  - Note: Full security requires accessibility permissions; this provides best-effort protection
+  - Blocks system shortcuts (Cmd+Tab, Cmd+Space, Cmd+Opt+Esc, etc.) via CGEventTap
+  - Hides Dock and menu bar
+  - Uses screen saver window level (appears above most system UI)
+  - Covers all connected displays
+  - Requires Accessibility permission for full protection (prompted on launch)
 
-This mode is useful for simulating a lock screen on kiosk or demo machines.
+#### Custom Lock Screen URL
+You can use your own webpage instead of the built-in lock screen by specifying a `url`:
+```json
+{
+  "url": "file:///path/to/custom-lock-screen.html",
+  "fakeLockScreen": {
+    "enable": true,
+    "password": "your-password",
+    "secure": true
+  }
+}
+```
+
+Your custom page has access to the WebOverlay JavaScript API for authentication:
+```javascript
+// Verify password (calls window.onPasswordIncorrect() if wrong)
+window.__overlayControl.verifyPassword("user-input");
+
+// Handle incorrect password
+window.onPasswordIncorrect = function() {
+    alert("Wrong password!");
+};
+```
+
+See [examples/custom-lock-screen.html](examples/custom-lock-screen.html) for a complete implementation example.
+
+This mode is useful for kiosk machines, demo setups, or custom branding.
 
 Fields:
 - `url` – Page to display (used when `color` is not set).
@@ -124,7 +152,7 @@ WebOverlay injects a `window.__overlayControl` object into all loaded webpages. 
 ### Available Methods
 
 **`window.__overlayControl.exit()`**
-Terminates the WebOverlay application.
+Terminates the WebOverlay application immediately.
 
 ```javascript
 // Example: exit after 10 seconds
@@ -136,6 +164,26 @@ setTimeout(function() {
 document.getElementById('closeBtn').addEventListener('click', function() {
     window.__overlayControl.exit();
 });
+```
+
+**`window.__overlayControl.verifyPassword(password)`**
+*(Lock screen mode only)* Sends a password to WebOverlay for verification against the configured password hash.
+
+- If correct: unlocks secure mode and terminates the app
+- If incorrect: calls `window.onPasswordIncorrect()` if defined
+
+```javascript
+// Submit password for verification
+function unlock() {
+    const password = document.getElementById('passwordInput').value;
+    window.__overlayControl.verifyPassword(password);
+}
+
+// Handle incorrect password (define this to receive failure callback)
+window.onPasswordIncorrect = function() {
+    document.getElementById('error').textContent = 'Wrong password';
+    document.getElementById('passwordInput').value = '';
+};
 ```
 
 **`window.__overlayControl.pause()`**

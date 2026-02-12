@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Custom Lock Screen Example</title>
+    <style>
+        /*
+         * Custom Lock Screen Example for WebOverlay
+         *
+         * This example demonstrates how to create a custom lock screen that
+         * integrates with WebOverlay's authentication system.
+         *
+         * Usage:
+         * 1. Host this file locally or on a web server
+         * 2. Configure WebOverlay with:
+         *    {
+         *      "url": "file:///path/to/custom-lock-screen.html",
+         *      "fakeLockScreen": {
+         *        "enable": true,
+         *        "password": "your-password",
+         *        "secure": true
+         *      }
+         *    }
+         *
+         * Available JavaScript API (injected by WebOverlay):
+         *
+         *   window.__overlayControl.verifyPassword(password)
+         *     - Sends password to WebOverlay for verification
+         *     - If correct: app terminates (unlocks)
+         *     - If incorrect: calls window.onPasswordIncorrect() if defined
+         *
+         *   window.__overlayControl.exit()
+         *     - Immediately terminates WebOverlay (no password check)
+         *     - Use with caution in secure mode
+         *
+         *   window.onPasswordIncorrect()
+         *     - Define this function to handle incorrect password attempts
+         *     - Called by WebOverlay when verifyPassword() fails
+         */
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+            /* Custom gradient - modify as desired */
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 50%, #1e3c72 100%);
+            color: white;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            padding: 40px;
+        }
+
+        /* Custom logo/branding area */
+        .logo {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+
+        .title {
+            font-size: 32px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .subtitle {
+            font-size: 18px;
+            opacity: 0.8;
+            margin-bottom: 40px;
+        }
+
+        /* Password form */
+        .form {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .input-group {
+            position: relative;
+        }
+
+        .password-input {
+            width: 280px;
+            height: 48px;
+            padding: 0 50px 0 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 24px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            color: white;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .password-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .password-input:focus {
+            border-color: rgba(255, 255, 255, 0.6);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .password-input:disabled {
+            opacity: 0.5;
+        }
+
+        .submit-btn {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 36px;
+            height: 36px;
+            border: none;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.2s ease;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        /* Error message */
+        .error {
+            color: #ff6b6b;
+            font-size: 14px;
+            min-height: 20px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .error.visible {
+            opacity: 1;
+        }
+
+        /* Footer message */
+        .footer {
+            position: fixed;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 14px;
+            opacity: 0.6;
+            text-align: center;
+        }
+
+        /* Shake animation for incorrect password */
+        .shake {
+            animation: shake 0.5s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-10px); }
+            40%, 80% { transform: translateX(10px); }
+        }
+
+        /* Loading spinner */
+        .spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        .spinner.visible {
+            display: block;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Customize your branding here -->
+        <div class="logo">🏢</div>
+        <div class="title">Company Kiosk</div>
+        <div class="subtitle">Enter password to unlock</div>
+
+        <div class="form">
+            <div class="input-group" id="input-group">
+                <input
+                    type="password"
+                    class="password-input"
+                    id="password"
+                    placeholder="Password"
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                >
+                <button class="submit-btn" id="submit" title="Unlock">
+                    <span id="btn-icon">→</span>
+                    <span class="spinner" id="spinner"></span>
+                </button>
+            </div>
+            <div class="error" id="error">Incorrect password</div>
+        </div>
+    </div>
+
+    <div class="footer">
+        Authorized personnel only
+    </div>
+
+    <script>
+        // DOM elements
+        const passwordInput = document.getElementById('password');
+        const inputGroup = document.getElementById('input-group');
+        const submitBtn = document.getElementById('submit');
+        const btnIcon = document.getElementById('btn-icon');
+        const spinner = document.getElementById('spinner');
+        const errorMsg = document.getElementById('error');
+
+        // State
+        let isSubmitting = false;
+
+        /**
+         * Submit password for verification
+         * Uses WebOverlay's injected __overlayControl API
+         */
+        function submitPassword() {
+            const password = passwordInput.value.trim();
+
+            if (!password || isSubmitting) return;
+
+            isSubmitting = true;
+
+            // Update UI to show loading state
+            passwordInput.disabled = true;
+            submitBtn.disabled = true;
+            btnIcon.style.display = 'none';
+            spinner.classList.add('visible');
+            errorMsg.classList.remove('visible');
+
+            // Send password to WebOverlay for verification
+            // The password is verified against the hash in config.json
+            // Password is NEVER stored in JavaScript - only sent to Swift
+            if (window.__overlayControl && window.__overlayControl.verifyPassword) {
+                window.__overlayControl.verifyPassword(password);
+            } else {
+                // Fallback for testing outside WebOverlay
+                console.warn('__overlayControl not available - running outside WebOverlay');
+                setTimeout(() => window.onPasswordIncorrect(), 500);
+            }
+        }
+
+        /**
+         * Called by WebOverlay when password verification fails
+         * This function MUST be defined for WebOverlay to notify you of failures
+         */
+        window.onPasswordIncorrect = function() {
+            isSubmitting = false;
+
+            // Reset UI
+            passwordInput.value = '';
+            passwordInput.disabled = false;
+            submitBtn.disabled = false;
+            btnIcon.style.display = 'inline';
+            spinner.classList.remove('visible');
+
+            // Show error and shake animation
+            errorMsg.classList.add('visible');
+            inputGroup.classList.add('shake');
+
+            setTimeout(() => {
+                inputGroup.classList.remove('shake');
+                passwordInput.focus();
+            }, 500);
+
+            // Hide error after a delay
+            setTimeout(() => {
+                errorMsg.classList.remove('visible');
+            }, 3000);
+        };
+
+        // Event listeners
+        passwordInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                submitPassword();
+            }
+        });
+
+        submitBtn.addEventListener('click', submitPassword);
+
+        // Focus password field on load
+        setTimeout(() => passwordInput.focus(), 100);
+
+        // Keep focus on password field
+        document.addEventListener('click', (e) => {
+            if (e.target !== passwordInput && !isSubmitting) {
+                passwordInput.focus();
+            }
+        });
+    </script>
+</body>
+</html>

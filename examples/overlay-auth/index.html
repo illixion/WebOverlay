@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Page with Auth Overlay</title>
+    <link rel="stylesheet" href="auth-overlay.css">
+    <style>
+        /* Main page styles - customize as needed */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #1a1a2e;
+            color: white;
+            margin: 0;
+            padding: 40px;
+            min-height: 100vh;
+        }
+        h1 { margin-bottom: 20px; }
+        p { opacity: 0.8; margin-bottom: 30px; }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-danger {
+            background: #e74c3c;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <h1>Main Application</h1>
+    <p>This page works independently. Click the button below to show the auth overlay.</p>
+
+    <button class="btn btn-primary" onclick="showAuthOverlay()">Show Auth Overlay</button>
+    <button class="btn btn-danger" onclick="exitApp()">Exit App</button>
+
+    <!-- Auth overlay container (hidden by default) -->
+    <div id="auth-overlay"></div>
+
+    <script src="auth-overlay.js"></script>
+    <script>
+        // Example: Show auth overlay on button press
+        function showAuthOverlay() {
+            AuthOverlay.show();
+        }
+
+        // Example: Direct exit (no auth)
+        function exitApp() {
+            if (window.__overlayControl) {
+                window.__overlayControl.exit();
+            }
+        }
+
+        // Optional: Auto-show overlay on page load
+        // AuthOverlay.show();
+    </script>
+</body>
+</html>
