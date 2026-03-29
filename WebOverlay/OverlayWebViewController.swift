@@ -113,7 +113,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                     height: 100%;
                     overflow: hidden;
                     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
-                    background: linear-gradient(180deg, #1a1a2e 0%, #0f0f1a 100%);
+                    background: rgba(0, 0, 0, 0.55);
                     color: white;
                 }
                 .container {
@@ -129,28 +129,57 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                     font-weight: 200;
                     letter-spacing: -2px;
                     margin-bottom: 8px;
+                    text-shadow: 0 2px 20px rgba(0, 0, 0, 0.5);
                 }
                 .date {
                     font-size: 24px;
                     font-weight: 400;
                     opacity: 0.9;
                     margin-bottom: 60px;
+                    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.5);
+                }
+                .prompt-hint {
+                    font-size: 16px;
+                    opacity: 0.6;
+                    transition: opacity 0.3s ease;
+                }
+                .prompt-hint.hidden {
+                    opacity: 0;
+                }
+                .unlock-panel {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    opacity: 0;
+                    transform: translateY(10px);
+                    transition: opacity 0.25s ease, transform 0.25s ease;
+                    pointer-events: none;
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    margin-top: 40px;
+                    transform: translate(-50%, -50%) translateY(10px);
+                }
+                .unlock-panel.visible {
+                    opacity: 1;
+                    transform: translate(-50%, -50%) translateY(0);
+                    pointer-events: auto;
                 }
                 .avatar {
-                    width: 120px;
-                    height: 120px;
+                    width: 80px;
+                    height: 80px;
                     border-radius: 50%;
                     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    margin-bottom: 16px;
-                    font-size: 48px;
+                    margin-bottom: 12px;
+                    font-size: 36px;
                 }
                 .username {
-                    font-size: 22px;
+                    font-size: 18px;
                     font-weight: 500;
-                    margin-bottom: 20px;
+                    margin-bottom: 16px;
                 }
                 .password-container {
                     position: relative;
@@ -215,6 +244,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                     text-align: center;
                     max-width: 80%;
                     white-space: pre-wrap;
+                    text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
                 }
                 .shake {
                     animation: shake 0.5s ease-in-out;
@@ -230,6 +260,9 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
             <div class="container">
                 <div class="time" id="time">00:00</div>
                 <div class="date" id="date">Loading...</div>
+                <div class="prompt-hint" id="prompt-hint">Press any key to unlock</div>
+            </div>
+            <div class="unlock-panel" id="unlock-panel">
                 <div class="avatar">🔒</div>
                 <div class="username">Locked</div>
                 <div class="password-container" id="password-container">
@@ -240,6 +273,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
             <div class="message" id="message"></div>
             <script>
                 const MESSAGE = "\(escapedMessage)";
+                const DISMISS_DELAY = 10000;
 
                 document.getElementById('message').textContent = MESSAGE;
 
@@ -258,21 +292,59 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                 const passwordInput = document.getElementById('password');
                 const passwordContainer = document.getElementById('password-container');
                 const submitBtn = document.getElementById('submit');
+                const unlockPanel = document.getElementById('unlock-panel');
+                const promptHint = document.getElementById('prompt-hint');
+
+                let panelVisible = false;
+                let dismissTimer = null;
+                let verifying = false;
+
+                function showPanel() {
+                    if (panelVisible) return;
+                    panelVisible = true;
+                    unlockPanel.classList.add('visible');
+                    promptHint.classList.add('hidden');
+                    setTimeout(() => passwordInput.focus(), 50);
+                    resetDismissTimer();
+                }
+
+                function hidePanel() {
+                    if (!panelVisible || verifying) return;
+                    panelVisible = false;
+                    unlockPanel.classList.remove('visible');
+                    promptHint.classList.remove('hidden');
+                    passwordInput.value = '';
+                    passwordInput.blur();
+                    clearDismissTimer();
+                }
+
+                function resetDismissTimer() {
+                    clearDismissTimer();
+                    dismissTimer = setTimeout(hidePanel, DISMISS_DELAY);
+                }
+
+                function clearDismissTimer() {
+                    if (dismissTimer) {
+                        clearTimeout(dismissTimer);
+                        dismissTimer = null;
+                    }
+                }
 
                 function checkPassword() {
                     const pwd = passwordInput.value;
                     if (!pwd) return;
 
-                    // Disable input while verifying
+                    verifying = true;
+                    clearDismissTimer();
                     passwordInput.disabled = true;
                     submitBtn.disabled = true;
 
-                    // Send password to Swift for verification (password never stored in JS)
                     window.__overlayControl.verifyPassword(pwd);
                 }
 
                 // Called from Swift when password is incorrect
                 window.onPasswordIncorrect = function() {
+                    verifying = false;
                     passwordInput.value = '';
                     passwordInput.disabled = false;
                     submitBtn.disabled = false;
@@ -281,23 +353,39 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                         passwordContainer.classList.remove('shake');
                         passwordInput.focus();
                     }, 500);
+                    resetDismissTimer();
                 };
 
                 passwordInput.addEventListener('keydown', function(e) {
                     if (e.key === 'Enter') {
                         checkPassword();
+                    } else if (e.key === 'Escape') {
+                        hidePanel();
+                    } else {
+                        resetDismissTimer();
                     }
                 });
 
-                submitBtn.addEventListener('click', checkPassword);
+                submitBtn.addEventListener('click', function() {
+                    checkPassword();
+                    resetDismissTimer();
+                });
 
-                // Focus password field on load
-                setTimeout(() => passwordInput.focus(), 100);
+                // Any keypress on the body shows the panel
+                document.addEventListener('keydown', function(e) {
+                    if (!panelVisible) {
+                        if (e.key === 'Escape' || e.metaKey || e.ctrlKey || e.altKey) return;
+                        showPanel();
+                    }
+                });
 
-                // Re-focus if clicked elsewhere
+                // Click anywhere on the overlay shows the panel
                 document.addEventListener('click', function(e) {
-                    if (e.target !== passwordInput && !passwordInput.disabled) {
+                    if (!panelVisible) {
+                        showPanel();
+                    } else if (e.target !== passwordInput && e.target !== submitBtn && !passwordInput.disabled) {
                         passwordInput.focus();
+                        resetDismissTimer();
                     }
                 });
             </script>
