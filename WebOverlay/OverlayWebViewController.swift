@@ -145,6 +145,8 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                 }
                 .prompt-hint.hidden {
                     opacity: 0;
+                    pointer-events: none;
+                    position: absolute;
                 }
                 .unlock-panel {
                     display: flex;
@@ -154,16 +156,14 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                     transform: translateY(10px);
                     transition: opacity 0.25s ease, transform 0.25s ease;
                     pointer-events: none;
-                    position: absolute;
-                    top: 50%;
-                    left: 50%;
-                    margin-top: 40px;
-                    transform: translate(-50%, -50%) translateY(10px);
+                    overflow: hidden;
+                    max-height: 0;
                 }
                 .unlock-panel.visible {
                     opacity: 1;
-                    transform: translate(-50%, -50%) translateY(0);
+                    transform: translateY(0);
                     pointer-events: auto;
+                    max-height: 200px;
                 }
                 .avatar {
                     width: 80px;
@@ -261,13 +261,13 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                 <div class="time" id="time">00:00</div>
                 <div class="date" id="date">Loading...</div>
                 <div class="prompt-hint" id="prompt-hint">Press any key to unlock</div>
-            </div>
-            <div class="unlock-panel" id="unlock-panel">
-                <div class="avatar">🔒</div>
-                <div class="username">Locked</div>
-                <div class="password-container" id="password-container">
-                    <input type="password" class="password-input" id="password" placeholder="Enter Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
-                    <button class="submit-btn" id="submit">→</button>
+                <div class="unlock-panel" id="unlock-panel">
+                    <div class="avatar">🔒</div>
+                    <div class="username">Locked</div>
+                    <div class="password-container" id="password-container">
+                        <input type="password" class="password-input" id="password" placeholder="Enter Password" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+                        <button class="submit-btn" id="submit">→</button>
+                    </div>
                 </div>
             </div>
             <div class="message" id="message"></div>
@@ -359,8 +359,6 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                 passwordInput.addEventListener('keydown', function(e) {
                     if (e.key === 'Enter') {
                         checkPassword();
-                    } else if (e.key === 'Escape') {
-                        hidePanel();
                     } else {
                         resetDismissTimer();
                     }
@@ -371,16 +369,20 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                     resetDismissTimer();
                 });
 
-                // Any keypress on the body shows the panel
+                // Any keypress on the body shows the panel or dismisses it with Escape
                 document.addEventListener('keydown', function(e) {
+                    if (e.key === 'Escape') {
+                        hidePanel();
+                        return;
+                    }
                     if (!panelVisible) {
-                        if (e.key === 'Escape' || e.metaKey || e.ctrlKey || e.altKey) return;
+                        if (e.metaKey || e.ctrlKey || e.altKey) return;
                         showPanel();
                     }
                 });
 
-                // Click anywhere on the overlay shows the panel
-                document.addEventListener('click', function(e) {
+                // Mouse click anywhere shows the panel or refocuses input
+                document.addEventListener('mousedown', function(e) {
                     if (!panelVisible) {
                         showPanel();
                     } else if (e.target !== passwordInput && e.target !== submitBtn && !passwordInput.disabled) {

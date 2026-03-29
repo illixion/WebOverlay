@@ -236,11 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        // Block Escape key - keyCode 53
-        if keyCode == 53 && !hasCommand && !hasOption {
-            NSLog("[Overlay] Blocked Escape via event tap")
-            return nil
-        }
+        // Allow Escape key through to the WebView for lock screen prompt dismissal
 
         // Block Cmd+` (window switching within app)
         if hasCommand && keyCode == 50 {
@@ -609,11 +605,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        // Block Escape key
-        if event.keyCode == 53 {
-            NSLog("[Overlay] Blocked Escape in secure mode")
-            return nil
-        }
+        // Allow Escape key through for lock screen prompt dismissal
 
         // Allow the event for password entry
         return event
