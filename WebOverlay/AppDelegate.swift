@@ -378,6 +378,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         window.makeKeyAndOrderFront(nil)
+
+        // In lock screen mode, activate the app so it steals focus from other windows
+        if config.isLockScreenMode {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+
         NSLog("[Overlay] Window visible (alpha=\(window.alphaValue), clickThrough=\(window.ignoresMouseEvents))")
     }
 
