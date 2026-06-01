@@ -132,6 +132,8 @@ struct SettingsView: View {
                     }
 
                     TextField("Fallback color (#RRGGBB)", text: colorBinding)
+
+                    Toggle("Unload pages while hidden (sleep/lock)", isOn: $manager.globals.unloadWhenHidden)
                 }
 
                 Section("Fake Lock Screen") {

@@ -9,7 +9,7 @@ WebOverlay is a lightweight macOS menu-bar app that renders transparent, always-
 - **Multi-monitor aware** — each window remembers a preferred display and follows it across reconnects; reassign monitors on the fly.
 - **Always-on-top** across all Spaces & full-screen (auxiliary) spaces, sitting just below the menu bar so the menu stays accessible.
 - **Static color mode** — display a solid hex color instead of a web page.
-- **Global settings** — click-through default, optional periodic auto-reload, and fake lock screen, edited in a Settings window.
+- **Global settings** — click-through default, optional periodic auto-reload, unload-while-hidden, and fake lock screen, edited in a Settings window.
 - **Fake lock screen** — optional password-protected lock screen with a secure kiosk mode.
 - **Hotkeys** — `Cmd+Option+Shift+O` toggles click-through for all windows; `Cmd+Option+Shift+K` quits.
 
@@ -54,6 +54,7 @@ You normally **don't edit this by hand** — use **Manage Pages…** and **Setti
     "isClickThrough": true,
     "autoReloadInterval": 300,
     "color": null,
+    "unloadWhenHidden": false,
     "fakeLockScreen": null
   },
   "openWindows": [
@@ -63,7 +64,7 @@ You normally **don't edit this by hand** — use **Manage Pages…** and **Setti
 ```
 
 - **Pages** carry their own `opacity` (and an optional `color` for solid-color overlays instead of a `url`).
-- **Globals** apply to all windows: `isClickThrough` (default click-through behavior), `autoReloadInterval` (seconds; null disables), `color` (legacy fallback), and `fakeLockScreen`.
+- **Globals** apply to all windows: `isClickThrough` (default click-through behavior), `autoReloadInterval` (seconds; null disables), `color` (legacy fallback), `unloadWhenHidden` (fully unload pages while invisible on sleep/lock, reloading on show), and `fakeLockScreen`.
 - **openWindows** records which overlays are open and which monitor each prefers; this is restored on launch.
 
 ### Migration from older versions
@@ -157,11 +158,11 @@ window.onPasswordIncorrect = function() {
 
 **`window.__overlayControl.pause()`** — Pauses all timers and media. Used internally during sleep/screen lock.
 
-**`window.__overlayControl.resume()`** — Resumes visibility. (The page is also reloaded on wake for reliability.)
+**`window.__overlayControl.resume()`** — Resumes visibility when the overlay is shown again.
 
 ### Page Visibility
 
-When the overlay is hidden (display sleep or screen lock) WebOverlay drives the **standard Page Visibility API** so your page can idle backend polling/fetching while it isn't on screen. On hide it sets `document.hidden = true` / `document.visibilityState = "hidden"` and dispatches a real `visibilitychange` event (plus a `window` `blur`); on show it reverses this (plus a `focus`). A dedicated `overlayvisibilitychange` event is also dispatched on `document` with `event.detail.visible`.
+When the overlay is hidden (display sleep or screen lock) WebOverlay drives the **standard Page Visibility API** so your page can idle backend polling/fetching while it isn't on screen. The page stays loaded and is *not* reloaded on show (unless the **Unload pages while hidden** setting is enabled, in which case the document is discarded while hidden and reloaded when shown). On hide it sets `document.hidden = true` / `document.visibilityState = "hidden"` and dispatches a real `visibilitychange` event (plus a `window` `blur`); on show it reverses this (plus a `focus`). A dedicated `overlayvisibilitychange` event is also dispatched on `document` with `event.detail.visible`.
 
 ```javascript
 // Standard approach — works unchanged

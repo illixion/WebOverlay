@@ -26,6 +26,7 @@ final class OverlayWindowController {
 
     init(page: Page,
          autoReloadInterval: TimeInterval?,
+         unloadWhenHidden: Bool,
          preferredDisplay: DisplayRef?,
          isMovable: Bool,
          clickThrough: Bool,
@@ -37,7 +38,7 @@ final class OverlayWindowController {
         self.autoReloadInterval = autoReloadInterval
 
         window = OverlayWindow(contentRect: frame, role: .page)
-        viewController = OverlayWebViewController(content: .page(page, autoReloadInterval: autoReloadInterval))
+        viewController = OverlayWebViewController(content: .page(page, autoReloadInterval: autoReloadInterval, unloadWhenHidden: unloadWhenHidden))
         window.contentViewController = viewController
         window.alphaValue = page.opacity
 

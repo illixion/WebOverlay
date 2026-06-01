@@ -82,6 +82,7 @@ final class OverlayManager: ObservableObject {
         let ctrl = OverlayWindowController(
             page: page,
             autoReloadInterval: globals.autoReloadInterval,
+            unloadWhenHidden: globals.unloadWhenHidden,
             preferredDisplay: state.preferredDisplay ?? screen.makeDisplayRef(),
             isMovable: state.isMovable ?? false,
             clickThrough: globals.isClickThrough,

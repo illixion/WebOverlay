@@ -78,24 +78,27 @@ struct GlobalSettings: Codable {
     var isClickThrough: Bool                 // applies to all windows; default on
     var autoReloadInterval: TimeInterval?
     var color: String?                       // legacy fallback color
+    var unloadWhenHidden: Bool               // fully unload pages while invisible (sleep/lock)
     var fakeLockScreen: FakeLockScreenConfig?
 
-    static let `default` = GlobalSettings(isClickThrough: true, autoReloadInterval: nil, color: nil, fakeLockScreen: nil)
+    static let `default` = GlobalSettings(isClickThrough: true, autoReloadInterval: nil, color: nil, unloadWhenHidden: false, fakeLockScreen: nil)
 
-    init(isClickThrough: Bool = true, autoReloadInterval: TimeInterval? = nil, color: String? = nil, fakeLockScreen: FakeLockScreenConfig? = nil) {
+    init(isClickThrough: Bool = true, autoReloadInterval: TimeInterval? = nil, color: String? = nil, unloadWhenHidden: Bool = false, fakeLockScreen: FakeLockScreenConfig? = nil) {
         self.isClickThrough = isClickThrough
         self.autoReloadInterval = autoReloadInterval
         self.color = color
+        self.unloadWhenHidden = unloadWhenHidden
         self.fakeLockScreen = fakeLockScreen
     }
 
-    enum CodingKeys: String, CodingKey { case isClickThrough, autoReloadInterval, color, fakeLockScreen }
+    enum CodingKeys: String, CodingKey { case isClickThrough, autoReloadInterval, color, unloadWhenHidden, fakeLockScreen }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         isClickThrough = try c.decodeIfPresent(Bool.self, forKey: .isClickThrough) ?? true
         autoReloadInterval = try c.decodeIfPresent(TimeInterval.self, forKey: .autoReloadInterval)
         color = try c.decodeIfPresent(String.self, forKey: .color)
+        unloadWhenHidden = try c.decodeIfPresent(Bool.self, forKey: .unloadWhenHidden) ?? false
         fakeLockScreen = try c.decodeIfPresent(FakeLockScreenConfig.self, forKey: .fakeLockScreen)
     }
 

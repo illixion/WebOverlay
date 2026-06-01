@@ -3,14 +3,16 @@ import WebKit
 
 /// The content a controller renders.
 enum OverlayContent {
-    case page(Page, autoReloadInterval: TimeInterval?)
+    case page(Page, autoReloadInterval: TimeInterval?, unloadWhenHidden: Bool)
     case lockScreen(GlobalSettings)
 
     var isLockScreen: Bool { if case .lockScreen = self { return true } else { return false } }
-    var isColorMode: Bool { if case .page(let p, _) = self { return p.isColorMode } else { return false } }
-    var url: URL? { if case .page(let p, _) = self { return p.url } else { return nil } }
-    var parsedColor: NSColor? { if case .page(let p, _) = self { return p.parsedColor } else { return nil } }
-    var autoReloadInterval: TimeInterval? { if case .page(_, let i) = self { return i } else { return nil } }
+    var isColorMode: Bool { if case .page(let p, _, _) = self { return p.isColorMode } else { return false } }
+    var url: URL? { if case .page(let p, _, _) = self { return p.url } else { return nil } }
+    var parsedColor: NSColor? { if case .page(let p, _, _) = self { return p.parsedColor } else { return nil } }
+    var autoReloadInterval: TimeInterval? { if case .page(_, let i, _) = self { return i } else { return nil } }
+    /// Whether to fully unload the page (about:blank) while hidden, reloading on show.
+    var unloadWhenHidden: Bool { if case .page(_, _, let u) = self { return u } else { return false } }
 }
 
 final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
@@ -488,6 +490,19 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
 
         let userScript = WKUserScript(source: pauseResumeJS, injectionTime: .atDocumentStart, forMainFrameOnly: false)
         userContentController.addUserScript(userScript)
+
+        // Force a transparent background from the very first paint so the page's
+        // default (usually white) body never flashes through the overlay.
+        let transparentBGJS = """
+        (function() {
+            var style = document.createElement('style');
+            style.textContent = 'html,body{background:transparent !important;}';
+            (document.head || document.documentElement).appendChild(style);
+        })();
+        """
+        let bgScript = WKUserScript(source: transparentBGJS, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        userContentController.addUserScript(bgScript)
+
         userContentController.add(self, name: "overlayBridge")
 
         let wkConfig = WKWebViewConfiguration()
@@ -500,6 +515,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
         wv.navigationDelegate = self
         wv.uiDelegate = self
         wv.setValue(false, forKey: "drawsBackground")
+        wv.underPageBackgroundColor = .clear  // avoid the default white backstop flashing during loads
 
         view.addSubview(wv)
         webView = wv
@@ -512,16 +528,22 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
         }
     }
 
-    /// Pause web content: stop reload timer, call injected pause helper and hide the webview to reduce rendering.
+    /// Pause web content: stop reload timer and signal/unload the page while hidden.
     func pauseWebContent() {
         guard !content.isColorMode else { return }
         reloadTimer?.invalidate()
         reloadTimer = nil
-        webView?.evaluateJavaScript("window.__overlayControl && window.__overlayControl.pause();", completionHandler: nil)
+        if content.unloadWhenHidden {
+            // Fully unload: drop the document so it can't poll/fetch or hold memory.
+            webView?.load(URLRequest(url: URL(string: "about:blank")!))
+        } else {
+            // Keep the page loaded; the Page Visibility shim lets it idle its own work.
+            webView?.evaluateJavaScript("window.__overlayControl && window.__overlayControl.pause();", completionHandler: nil)
+        }
         webView?.isHidden = true
     }
 
-    /// Resume web content: show webview and reload to restore script-driven activity.
+    /// Resume web content: show the webview and either reload (if it was unloaded) or just flip visibility.
     func resumeWebContent() {
         guard !content.isColorMode else { return }
         webView?.isHidden = false
@@ -530,8 +552,12 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                 self?.webView?.reload()
             }
         }
-        // Reloading is the most reliable way to return to a running state.
-        webView?.reload()
+        if content.unloadWhenHidden {
+            // The document was discarded while hidden, so reload the configured URL.
+            load()
+        } else {
+            webView?.evaluateJavaScript("window.__overlayControl && window.__overlayControl.resume();", completionHandler: nil)
+        }
     }
 
     func load() {
