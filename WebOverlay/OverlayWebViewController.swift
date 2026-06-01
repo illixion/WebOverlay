@@ -1,14 +1,29 @@
 import AppKit
 import WebKit
 
+/// The content a controller renders.
+enum OverlayContent {
+    case page(Page, autoReloadInterval: TimeInterval?)
+    case lockScreen(GlobalSettings)
+
+    var isLockScreen: Bool { if case .lockScreen = self { return true } else { return false } }
+    var isColorMode: Bool { if case .page(let p, _) = self { return p.isColorMode } else { return false } }
+    var url: URL? { if case .page(let p, _) = self { return p.url } else { return nil } }
+    var parsedColor: NSColor? { if case .page(let p, _) = self { return p.parsedColor } else { return nil } }
+    var autoReloadInterval: TimeInterval? { if case .page(_, let i) = self { return i } else { return nil } }
+}
+
 final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
-    let config: OverlayConfig
+    let content: OverlayContent
     private var webView: WKWebView?
     private var colorView: NSView?
     private var reloadTimer: Timer?
 
-    init(config: OverlayConfig) {
-        self.config = config
+    /// Invoked when the lock screen password is verified. If nil, the app terminates.
+    var onUnlockSuccess: (() -> Void)?
+
+    init(content: OverlayContent) {
+        self.content = content
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -21,9 +36,9 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        if config.isLockScreenMode {
+        if content.isLockScreen {
             setupLockScreenView()
-        } else if config.isColorMode {
+        } else if content.isColorMode {
             setupColorView()
         } else {
             setupWebView()
@@ -31,7 +46,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
     }
 
     private func setupColorView() {
-        guard let color = config.parsedColor else { return }
+        guard let color = content.parsedColor else { return }
 
         let solidColorView = NSView(frame: view.bounds)
         solidColorView.autoresizingMask = [.width, .height]
@@ -75,7 +90,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
         webView = wv
 
         // If a URL is specified, load it instead of the built-in lock screen
-        if let url = config.url {
+        if let url = content.url {
             NSLog("[Overlay] Lock screen mode with custom URL: \(url)")
             let req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
             wv.load(req)
@@ -87,7 +102,12 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
     }
 
     private func buildBuiltInLockScreenHTML() -> String {
-        let lockScreenConfig = config.fakeLockScreen ?? .default
+        let lockScreenConfig: FakeLockScreenConfig
+        if case .lockScreen(let globals) = content {
+            lockScreenConfig = globals.fakeLockScreen ?? .default
+        } else {
+            lockScreenConfig = .default
+        }
         let message = lockScreenConfig.message ?? ""
         let escapedMessage = message
             .replacingOccurrences(of: "\\", with: "\\\\")
@@ -456,7 +476,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
         webView = wv
         load()
 
-        if let interval = config.autoReloadInterval, interval > 1 {
+        if let interval = content.autoReloadInterval, interval > 1 {
             reloadTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
                 self?.webView?.reload()
             }
@@ -465,7 +485,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
 
     /// Pause web content: stop reload timer, call injected pause helper and hide the webview to reduce rendering.
     func pauseWebContent() {
-        guard !config.isColorMode else { return }
+        guard !content.isColorMode else { return }
         reloadTimer?.invalidate()
         reloadTimer = nil
         webView?.evaluateJavaScript("window.__overlayControl && window.__overlayControl.pause();", completionHandler: nil)
@@ -474,9 +494,9 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
 
     /// Resume web content: show webview and reload to restore script-driven activity.
     func resumeWebContent() {
-        guard !config.isColorMode else { return }
+        guard !content.isColorMode else { return }
         webView?.isHidden = false
-        if let interval = config.autoReloadInterval, interval > 1 {
+        if let interval = content.autoReloadInterval, interval > 1 {
             reloadTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
                 self?.webView?.reload()
             }
@@ -486,7 +506,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
     }
 
     func load() {
-        guard let url = config.url else { return }
+        guard let url = content.url else { return }
         let req = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 30)
         webView?.load(req)
     }
@@ -494,7 +514,7 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
     // WKNavigationDelegate
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         // Only inject CSS for non-lock-screen mode
-        if !config.isLockScreenMode {
+        if !content.isLockScreen {
             injectCSS()
         }
     }
@@ -559,17 +579,17 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
     }
 
     private func handlePasswordVerification(_ inputPassword: String) {
-        if config.verifyPassword(inputPassword) {
+        guard case .lockScreen(let globals) = content else { return }
+        if globals.verifyPassword(inputPassword) {
             NSLog("[Overlay] Password verified successfully")
 
-            // Unlock secure mode before terminating
-            if config.isSecureMode {
-                if let appDelegate = NSApp.delegate as? AppDelegate {
-                    appDelegate.unlockSecureMode()
-                }
+            // Let the owner tear down secure mode (which terminates the app);
+            // fall back to terminating directly if no handler is set.
+            if let onUnlockSuccess {
+                onUnlockSuccess()
+            } else {
+                NSApplication.shared.terminate(nil)
             }
-
-            NSApplication.shared.terminate(nil)
         } else {
             NSLog("[Overlay] Password verification failed")
             // Notify JavaScript that password was incorrect

@@ -1,202 +1,175 @@
 # WebOverlay
 
-This project is a lightweight macOS application written in Swift that creates a transparent, always-on-top overlay window displaying a specified web page as a HUD. It is designed to be simple and configurable via a JSON file.
+WebOverlay is a lightweight macOS menu-bar app that renders transparent, always-on-top overlays of web pages (or solid colors) as HUDs. Manage a library of named pages and open each as its own overlay window — placed freely, one per monitor, or wherever you like — all from a status-bar menu. It also offers an optional password-protected fake lock screen for kiosk/demo use.
 
 ## Features
-- Always-on-top transparent window across all Spaces & full screen (auxiliary) spaces.
-- Configurable URL, opacity, and click-through (mouse pass-through) behavior.
-- Static color overlay mode – display a solid hex color instead of a webpage.
-- Optional periodic auto-reload (URL mode only).
-- Simple hotkey Command+Option+Shift+O toggles click-through.
-- Use the hotkey Command+Option+Shift+K to quit the app.
-- Ephemeral HUD feedback when toggling.
+- **Menu-bar driven** — runs as a status-bar agent (no Dock icon). Open, manage, and configure overlays from the menu.
+- **Page library** — save named URLs and open each as a separate always-on-top overlay (at most one window per page).
+- **Per-window controls** — opacity slider, drag-to-move, monitor switching, reload, and close, all from the menu.
+- **Multi-monitor aware** — each window remembers a preferred display and follows it across reconnects; reassign monitors on the fly.
+- **Always-on-top** across all Spaces & full-screen (auxiliary) spaces, sitting just below the menu bar so the menu stays accessible.
+- **Static color mode** — display a solid hex color instead of a web page.
+- **Global settings** — click-through default, optional periodic auto-reload, and fake lock screen, edited in a Settings window.
+- **Fake lock screen** — optional password-protected lock screen with a secure kiosk mode.
+- **Hotkeys** — `Cmd+Option+Shift+O` toggles click-through for all windows; `Cmd+Option+Shift+K` quits.
 
-# Getting Started
+## Getting Started
 
 - Download the latest release from the [Releases](https://github.com/illixion/WebOverlay/releases) page, or build from source (see below).
-- Install the app by moving it to your Applications folder. **Note:** macOS Quarantine may block the app on first launch; run the following command in terminal if needed:
+- Move the app to your Applications folder. **Note:** macOS Quarantine may block the app on first launch; run the following if needed:
   ```bash
   xattr -d com.apple.quarantine /Applications/WebOverlay.app
   ```
-- Launch the app; it will create a default config file if none exists.
-- Edit the config file to customize the overlay (see Configuration section).
+- Launch the app. A 🟦 icon appears in the menu bar. On first run it seeds a default page and shows it as an overlay.
+- Use the menu to add/open pages and adjust settings — there's no need to hand-edit the config file.
 
-## File Overview
-- `AppDelegate.swift` – App lifecycle, window setup, hotkey.
-- `OverlayWindow.swift` – Transparent borderless window.
-- `OverlayWebViewController.swift` – Hosts WKWebView, injects basic CSS to remove background.
-- `OverlayConfig.swift` – Codable configuration (saved to `~/Library/Application Support/WebOverlay/config.json`).
+## Using the menu bar
+
+Clicking the menu-bar icon opens a menu with:
+
+- **Pages** — every saved page. Click one to open or close its overlay window (a checkmark marks open pages). Open pages expand to a submenu with:
+  - **Opacity** — a live slider for that window.
+  - **Movable (drag to move)** — toggle to reposition the window by dragging (forces the window interactive while on).
+  - **Display** — move the window to a specific connected monitor.
+  - **Reload** / **Close Window**.
+- **Enable/Disable Interaction (all windows)** — global click-through toggle (same as `Cmd+Option+Shift+O`).
+- **Manage Pages…** — add, rename, edit URLs, reorder, and delete saved pages.
+- **Settings…** — edit global settings (below).
+- **Quit WebOverlay**.
 
 ## Configuration
-Create (or let the app create) a JSON file at:
+
+State is stored as the app's own data file at:
 `~/Library/Application Support/WebOverlay/config.json`
 
-### URL Mode (default)
-Display a webpage as the overlay:
+You normally **don't edit this by hand** — use **Manage Pages…** and **Settings…**. The schema (`version: 2`):
+
 ```json
 {
-  "url": "https://www.apple.com",
-  "opacity": 0.85,
-  "isClickThrough": true,
-  "autoReloadInterval": 300
+  "version": 2,
+  "pages": [
+    { "id": "…", "name": "Dashboard", "url": "https://example.com", "opacity": 0.3 }
+  ],
+  "globals": {
+    "isClickThrough": true,
+    "autoReloadInterval": 300,
+    "color": null,
+    "fakeLockScreen": null
+  },
+  "openWindows": [
+    { "pageID": "…", "preferredDisplay": { "uuid": "…", "localizedName": "DELL U2720Q" } }
+  ]
 }
 ```
 
-### Color Mode
-Display a static solid color instead of a webpage:
-```json
-{
-  "color": "#FF5500",
-  "opacity": 0.5,
-  "isClickThrough": true
-}
-```
+- **Pages** carry their own `opacity` (and an optional `color` for solid-color overlays instead of a `url`).
+- **Globals** apply to all windows: `isClickThrough` (default click-through behavior), `autoReloadInterval` (seconds; null disables), `color` (legacy fallback), and `fakeLockScreen`.
+- **openWindows** records which overlays are open and which monitor each prefers; this is restored on launch.
+
+### Migration from older versions
+
+An older single-overlay `config.json` (top-level `url`/`opacity`/`isClickThrough`/`color`/`fakeLockScreen`) is **migrated automatically** on first launch into one page plus global settings, and the file is rewritten in the `version: 2` format.
 
 ### Fake Lock Screen Mode
-Display a lock screen overlay with password protection:
+
+Configured under `globals.fakeLockScreen` (via the Settings window):
+
 ```json
 {
-  "fakeLockScreen": {
-    "enable": true,
-    "password": "your-password",
-    "message": "If found, please contact: email@example.com",
-    "secure": true
+  "globals": {
+    "fakeLockScreen": {
+      "enable": true,
+      "password": "your-password",
+      "message": "If found, please contact: email@example.com",
+      "secure": true
+    }
   }
 }
 ```
 
-When enabled, this mode:
-- Displays a macOS-style lock screen with current time/date (built-in)
-- Requires the correct password to exit the app
-- Shows an optional message at the bottom (e.g., contact info for lost devices)
-- **Password security**: Plaintext passwords in config are automatically hashed (SHA-256) on first launch
+When enabled, the app takes over as a lock screen:
+- Displays a macOS-style lock screen with current time/date (built-in).
+- Requires the correct password to exit (unlocking terminates the app).
+- Shows an optional message at the bottom (e.g., contact info for lost devices).
+- **Password security**: plaintext passwords are automatically hashed (SHA-256) and rewritten on save/launch.
 - In secure mode (`secure: true`):
-  - Disables the toggle and quit hotkeys
-  - Blocks system shortcuts (Cmd+Tab, Cmd+Space, Cmd+Opt+Esc, etc.) via CGEventTap
-  - Hides Dock and menu bar
-  - Uses screen saver window level (appears above most system UI)
-  - Covers all connected displays
-  - Requires Accessibility permission for full protection (prompted on launch)
+  - Disables the toggle and quit hotkeys.
+  - Blocks system shortcuts (Cmd+Tab, Cmd+Space, Cmd+Opt+Esc, etc.) via CGEventTap.
+  - Hides the Dock and menu bar.
+  - Uses the screen-saver window level (appears above most system UI).
+  - Covers all connected displays.
+  - Requires Accessibility permission for full protection (prompted on launch).
 
-#### Custom Lock Screen URL
-You can use your own webpage instead of the built-in lock screen by specifying a `url`:
-```json
-{
-  "url": "file:///path/to/custom-lock-screen.html",
-  "fakeLockScreen": {
-    "enable": true,
-    "password": "your-password",
-    "secure": true
-  }
-}
-```
-
-Your custom page has access to the WebOverlay JavaScript API for authentication:
-```javascript
-// Verify password (calls window.onPasswordIncorrect() if wrong)
-window.__overlayControl.verifyPassword("user-input");
-
-// Handle incorrect password
-window.onPasswordIncorrect = function() {
-    alert("Wrong password!");
-};
-```
-
-See [examples/custom-lock-screen.html](examples/custom-lock-screen.html) for a complete implementation example.
-
-This mode is useful for kiosk machines, demo setups, or custom branding.
-
-Fields:
-- `url` – Page to display (used when `color` is not set).
-- `color` – Hex color string (e.g., `"#FF0000"`, `"FF0000"`, `"#F00"`, or `"F00"`). When set, displays a solid color overlay instead of a webpage.
-- `opacity` – 0.0–1.0 window alpha.
-- `isClickThrough` – If true, mouse events fall through to apps beneath.
-- `autoReloadInterval` – Seconds between reloads (URL mode only; omit or null for disabled).
-- `fakeLockScreen` – Object with lock screen settings:
-  - `enable` – Boolean to enable lock screen mode.
-  - `password` – Password required to unlock (exit the app).
-  - `message` – Optional message displayed at bottom (e.g., contact info).
-  - `secure` – Boolean to enable additional security measures.
-
-**Note:** Mode priority: `fakeLockScreen` > `color` > `url`.
+This mode is useful for kiosk machines, demo setups, or anti-theft displays.
 
 ## Building
 
-I've provided an Xcode project file for convenience, but you can also create your own project and add the source files.
+The repo includes an Xcode project. To build from the command line:
 
-1. In Xcode create a new macOS App target. You may choose either:
-  - AppKit lifecycle (App Delegate) OR
-  - SwiftUI lifecycle (recommended newer templates). This repo includes `OverlayApp.swift` which bridges to `AppDelegate` using `@NSApplicationDelegateAdaptor`.
-2. If you used a SwiftUI template, keep `OverlayApp.swift` as `@main` and DO NOT mark `AppDelegate` with `@main`.
-3. Remove any default storyboard / scene references; window creation is programmatic. Clear `NSMainStoryboardFile` if present.
-4. Ensure `App Sandbox` is off (or allow outgoing network) if loading remote URLs.
-5. If loading non-HTTPS or self-signed content, configure App Transport Security (ATS) exceptions in Info.plist:
-   ```xml
-   <key>NSAppTransportSecurity</key>
-   <dict>
-     <key>NSAllowsArbitraryLoads</key><true/>
-   </dict>
-   ```
-6. To enable overlay on full-screen spaces, use LSUIElement setting, example is in `project.pbxproj`.
-7. If you encounter errors after running the solution, try disabling App Sandbox and Hardened Runtime in Signing & Capabilities.
+```bash
+xcodebuild -project WebOverlay.xcodeproj -scheme WebOverlay -configuration Debug -destination 'platform=macOS' build
+```
 
-## Usage
-- Launch the app; it loads the configured URL.
-- Use Command+Option+Shift+O to toggle click-through vs interactive mode.
-- Adjust opacity by editing the config and relaunching.
-- Run `killall WebOverlay` to quit the app from terminal.
+Notes for setting up the target:
+- **App lifecycle**: SwiftUI `@main` (`OverlayApp.swift`) bridges to `AppDelegate` via `@NSApplicationDelegateAdaptor`. Keep `OverlayApp` as `@main`; do not mark `AppDelegate` with `@main`. The SwiftUI body is `Settings { EmptyView() }` — all overlay windows are created programmatically.
+- **Menu-bar agent**: `LSUIElement` is set so there's no Dock icon. (The app temporarily becomes a regular app while a management window is open, then returns to agent mode.)
+- **App Sandbox / Hardened Runtime are off** — required for Accessibility/CGEventTap (secure mode) and loading arbitrary URLs. If you hit signing errors, disable both in Signing & Capabilities.
+- For non-HTTPS or self-signed content, add App Transport Security exceptions:
+  ```xml
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsArbitraryLoads</key><true/>
+  </dict>
+  ```
+- Deployment target: macOS 15.6.
 
 ## JavaScript API
-WebOverlay injects a `window.__overlayControl` object into all loaded webpages. This allows your overlay webpage to control the app.
+
+WebOverlay injects a `window.__overlayControl` object into loaded pages, letting an overlay page control the app.
 
 ### Available Methods
 
-**`window.__overlayControl.exit()`**
-Terminates the WebOverlay application immediately.
+**`window.__overlayControl.exit()`** — Terminates the WebOverlay application immediately.
 
 ```javascript
-// Example: exit after 10 seconds
-setTimeout(function() {
-    window.__overlayControl.exit();
-}, 10000);
+// Exit after 10 seconds
+setTimeout(function() { window.__overlayControl.exit(); }, 10000);
 
-// Example: exit on button click
+// Exit on button click
 document.getElementById('closeBtn').addEventListener('click', function() {
     window.__overlayControl.exit();
 });
 ```
 
-**`window.__overlayControl.verifyPassword(password)`**
-*(Lock screen mode only)* Sends a password to WebOverlay for verification against the configured password hash.
-
-- If correct: unlocks secure mode and terminates the app
-- If incorrect: calls `window.onPasswordIncorrect()` if defined
+**`window.__overlayControl.verifyPassword(password)`** — *(Lock screen mode only)* Sends a password to WebOverlay for verification against the configured hash.
+- If correct: tears down secure mode and terminates the app.
+- If incorrect: calls `window.onPasswordIncorrect()` if defined.
 
 ```javascript
-// Submit password for verification
 function unlock() {
-    const password = document.getElementById('passwordInput').value;
-    window.__overlayControl.verifyPassword(password);
+    window.__overlayControl.verifyPassword(document.getElementById('passwordInput').value);
 }
-
-// Handle incorrect password (define this to receive failure callback)
 window.onPasswordIncorrect = function() {
     document.getElementById('error').textContent = 'Wrong password';
     document.getElementById('passwordInput').value = '';
 };
 ```
 
-**`window.__overlayControl.pause()`**
-Pauses all timers and media. Used internally during sleep/screen lock.
+**`window.__overlayControl.pause()`** — Pauses all timers and media. Used internally during sleep/screen lock.
 
-**`window.__overlayControl.resume()`**
-Stub for resuming (reloading is used instead for reliability).
+**`window.__overlayControl.resume()`** — Stub for resuming (reloading is used instead for reliability).
 
-## Extending (Optional)
-- Add a status bar item to expose a small menu (toggle, reload, quit).
-- Live config reloading by watching the config file for changes.
-- Add drag-to-move overlay region (currently uses full screen with `.stationary`). You could wrap the WKWebView in a custom NSView tracking events and reposition the window.
-- Multi-overlay support: create multiple windows each with their own config. Currently, overlay spawns on the display where the app is launched.
+## Source overview
+
+- `OverlayApp.swift` — SwiftUI `@main` shell bridging to `AppDelegate`.
+- `AppDelegate.swift` — App lifecycle, global hotkeys, secure-mode kiosk machinery, system observers.
+- `OverlayManager.swift` — Owns the page library, global settings, open windows, persistence, and the lock-screen lifecycle.
+- `OverlayWindowController.swift` / `OverlayWindow.swift` — One overlay window each (transparent, borderless, role-based level) and its state.
+- `OverlayWebViewController.swift` — Hosts the `WKWebView` / color view / built-in lock screen and the JS bridge.
+- `StatusItemController.swift` — The menu-bar status item and its dynamically-built menu.
+- `ManagementWindows.swift` — The SwiftUI Manage Pages and Settings windows.
+- `AppConfig.swift` — The `config.json` data model, legacy migration, and stable display identity.
+- `OverlayConfig.swift` — Retained only as the decode-only DTO for migrating legacy configs.
 
 ## License
 MIT
