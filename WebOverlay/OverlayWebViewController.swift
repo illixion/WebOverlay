@@ -419,7 +419,8 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
     private func setupWebView() {
         let userContentController = WKUserContentController()
 
-        // Inject a small helper that tracks timers and media so we can pause them when the system sleeps/locks.
+        // Inject a small helper that tracks timers and media so we can pause them when the system sleeps/locks,
+        // and that drives the standard Page Visibility API so pages can idle backend work while invisible.
         let pauseResumeJS = """
         window.__overlayTimers = window.__overlayTimers || { ids: [] };
         (function() {
@@ -439,8 +440,35 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                 return id;
             };
 
+            // --- Page Visibility integration ---------------------------------
+            // The overlay is a borderless window WebKit doesn't reliably report as
+            // hidden, so we drive visibility explicitly. We override document.hidden /
+            // document.visibilityState (they're configurable on the prototype, so an
+            // own property on `document` shadows them) and dispatch a real
+            // 'visibilitychange' event plus a custom 'overlayvisibilitychange' detail.
+            let __overlayVisible = true;
+            try {
+                Object.defineProperty(document, 'visibilityState', {
+                    configurable: true, get: function() { return __overlayVisible ? 'visible' : 'hidden'; }
+                });
+                Object.defineProperty(document, 'hidden', {
+                    configurable: true, get: function() { return !__overlayVisible; }
+                });
+            } catch(e) {}
+
+            function __overlaySetVisible(visible) {
+                visible = !!visible;
+                if (visible === __overlayVisible) return;
+                __overlayVisible = visible;
+                try { document.dispatchEvent(new Event('visibilitychange')); } catch(e) {}
+                try { window.dispatchEvent(new Event(visible ? 'focus' : 'blur')); } catch(e) {}
+                try { document.dispatchEvent(new CustomEvent('overlayvisibilitychange', { detail: { visible: visible } })); } catch(e) {}
+            }
+
             window.__overlayControl = {
+                setVisible: __overlaySetVisible,
                 pause: function() {
+                    __overlaySetVisible(false);
                     try {
                         window.__overlayTimers.ids.forEach(function(id) { try { _clearInterval(id); _clearTimeout(id); } catch(e){} });
                         window.__overlayTimers.ids = [];
@@ -448,7 +476,8 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
                     try { document.querySelectorAll('video, audio').forEach(function(m){ try{ m.pause(); } catch(e){} }); } catch(e) {}
                 },
                 resume: function() {
-                    // Not all timers can be restored reliably; a reload is the safest way to resume script-driven activity.
+                    // Timers aren't restored (a reload is used for that); just flip visibility back.
+                    __overlaySetVisible(true);
                 },
                 exit: function() {
                     window.webkit.messageHandlers.overlayBridge.postMessage({ action: 'exit' });

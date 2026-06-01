@@ -157,7 +157,23 @@ window.onPasswordIncorrect = function() {
 
 **`window.__overlayControl.pause()`** — Pauses all timers and media. Used internally during sleep/screen lock.
 
-**`window.__overlayControl.resume()`** — Stub for resuming (reloading is used instead for reliability).
+**`window.__overlayControl.resume()`** — Resumes visibility. (The page is also reloaded on wake for reliability.)
+
+### Page Visibility
+
+When the overlay is hidden (display sleep or screen lock) WebOverlay drives the **standard Page Visibility API** so your page can idle backend polling/fetching while it isn't on screen. On hide it sets `document.hidden = true` / `document.visibilityState = "hidden"` and dispatches a real `visibilitychange` event (plus a `window` `blur`); on show it reverses this (plus a `focus`). A dedicated `overlayvisibilitychange` event is also dispatched on `document` with `event.detail.visible`.
+
+```javascript
+// Standard approach — works unchanged
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) stopPolling(); else startPolling();
+});
+
+// Or the explicit overlay event
+document.addEventListener('overlayvisibilitychange', function(e) {
+    e.detail.visible ? startPolling() : stopPolling();
+});
+```
 
 ## Source overview
 
