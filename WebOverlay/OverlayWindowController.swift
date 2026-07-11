@@ -23,6 +23,7 @@ final class OverlayWindowController {
     private var dragCatcher: DragCatcherView?
     private var lastClickThrough: Bool
     private var autoReloadInterval: TimeInterval?
+    private var unloadWhenHidden: Bool
 
     init(page: Page,
          autoReloadInterval: TimeInterval?,
@@ -36,11 +37,19 @@ final class OverlayWindowController {
         self.isMovable = isMovable
         self.lastClickThrough = clickThrough
         self.autoReloadInterval = autoReloadInterval
+        self.unloadWhenHidden = unloadWhenHidden
 
         window = OverlayWindow(contentRect: frame, role: .page)
         viewController = OverlayWebViewController(content: .page(page, autoReloadInterval: autoReloadInterval, unloadWhenHidden: unloadWhenHidden))
         window.contentViewController = viewController
         window.alphaValue = page.opacity
+
+        // When content is swapped in place, the new web/color view lands on top;
+        // re-float the drag catcher above it so window dragging keeps working.
+        viewController.onContentRebuilt = { [weak self] in
+            guard let self, self.isMovable else { return }
+            self.reinstallDragCatcher()
+        }
 
         if isMovable {
             window.isMovable = true
@@ -100,7 +109,32 @@ final class OverlayWindowController {
         dragCatcher = nil
     }
 
+    /// Re-add the drag catcher on top of freshly rebuilt content.
+    private func reinstallDragCatcher() {
+        removeDragCatcher()
+        installDragCatcher()
+    }
+
     // MARK: - Page mutations
+
+    /// Apply edited page data to this window *in place* (no window recreation).
+    /// Opacity always applies; a URL/color change reloads the content in the
+    /// existing window so its full-screen-space behavior is preserved.
+    func applyPage(_ newPage: Page) {
+        let contentChanged = page.url != newPage.url || page.color != newPage.color
+        page = newPage
+        window.alphaValue = newPage.opacity
+        if contentChanged {
+            viewController.setContent(.page(newPage, autoReloadInterval: autoReloadInterval, unloadWhenHidden: unloadWhenHidden))
+        }
+    }
+
+    /// Update the auto-reload interval in place, reloading the current content.
+    func updateAutoReload(interval: TimeInterval?, unloadWhenHidden: Bool) {
+        autoReloadInterval = interval
+        self.unloadWhenHidden = unloadWhenHidden
+        viewController.setContent(.page(page, autoReloadInterval: interval, unloadWhenHidden: unloadWhenHidden))
+    }
 
     func setOpacity(_ a: CGFloat) {
         page.opacity = a

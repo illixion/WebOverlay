@@ -187,16 +187,14 @@ final class OverlayManager: ObservableObject {
     }
 
     /// Re-apply edited page data to an open window (opacity + reload on URL/color change).
+    ///
+    /// The window is updated *in place* — never destroyed and recreated. A page
+    /// window recreated while the app is temporarily `.regular` (which it is
+    /// whenever the Manage Pages window is open) permanently loses its ability
+    /// to float over other apps' full-screen spaces until the app is relaunched.
     func applyPageEdits(_ page: Page) {
         guard let ctrl = controllers[page.id] else { persist(); return }
-        let changedContent = ctrl.page.url != page.url || ctrl.page.color != page.color
-        ctrl.setOpacity(page.opacity)
-        if changedContent {
-            let state = ctrl.currentState()
-            ctrl.close()
-            controllers[page.id] = nil
-            openWindow(page: page, state: state, persist: false)
-        }
+        ctrl.applyPage(page)
         persist()
     }
 
@@ -207,20 +205,15 @@ final class OverlayManager: ObservableObject {
             enterSecureLock()
             return
         }
-        for c in controllers.values { c.applyClickThrough(globals.isClickThrough) }
-        rebuildOpenWindows()   // pick up new auto-reload interval
-        persist()
-    }
-
-    private func rebuildOpenWindows() {
-        let states = controllers.values.map { $0.currentState() }
-        for c in controllers.values { c.close() }
-        controllers.removeAll()
-        for state in states {
-            guard let page = pages.first(where: { $0.id == state.pageID }) else { continue }
-            openWindow(page: page, state: state, persist: false)
+        for c in controllers.values {
+            c.applyClickThrough(globals.isClickThrough)
+            // Pick up new auto-reload interval / unload setting in place; recreating
+            // the windows here (while the Settings window holds the app in `.regular`)
+            // would break their full-screen-space visibility until relaunch.
+            c.updateAutoReload(interval: globals.autoReloadInterval, unloadWhenHidden: globals.unloadWhenHidden)
         }
         objectWillChange.send()
+        persist()
     }
 
     // MARK: - Pause / resume

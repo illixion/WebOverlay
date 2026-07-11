@@ -16,13 +16,16 @@ enum OverlayContent {
 }
 
 final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
-    let content: OverlayContent
+    private(set) var content: OverlayContent
     private var webView: WKWebView?
     private var colorView: NSView?
     private var reloadTimer: Timer?
 
     /// Invoked when the lock screen password is verified. If nil, the app terminates.
     var onUnlockSuccess: (() -> Void)?
+
+    /// Invoked after content is (re)built, so the owner can restore overlays (e.g. a drag catcher).
+    var onContentRebuilt: (() -> Void)?
 
     init(content: OverlayContent) {
         self.content = content
@@ -37,7 +40,10 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        buildContent()
+    }
 
+    private func buildContent() {
         if content.isLockScreen {
             setupLockScreenView()
         } else if content.isColorMode {
@@ -45,6 +51,27 @@ final class OverlayWebViewController: NSViewController, WKNavigationDelegate, WK
         } else {
             setupWebView()
         }
+    }
+
+    /// Swap the rendered content in place without recreating the host window.
+    ///
+    /// The window must never be destroyed/recreated to change a page's URL: a
+    /// window created while the app is temporarily `.regular` (e.g. the Manage
+    /// Pages window is open) loses its ability to float over other apps'
+    /// full-screen spaces, and flipping back to `.accessory` doesn't restore it.
+    /// Reloading in the original window preserves that behavior.
+    func setContent(_ newContent: OverlayContent) {
+        reloadTimer?.invalidate()
+        reloadTimer = nil
+        colorView?.removeFromSuperview()
+        colorView = nil
+        webView?.stopLoading()
+        webView?.removeFromSuperview()
+        webView = nil
+
+        content = newContent
+        buildContent()
+        onContentRebuilt?()
     }
 
     private func setupColorView() {
